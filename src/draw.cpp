@@ -16,22 +16,69 @@ ShadowStack shadow_lg() {
   return {{{0, 10, 15, -3, black.with_alpha(0.10f)}, {0, 4, 6, -4, black.with_alpha(0.10f)}}, 2};
 }
 
+namespace {
+// Points of a rounded rectangle, `seg` + 1 per corner, clockwise from the
+// top-left corner, with the outward normal of each point. Rectangles with the
+// same `seg` have matching points, so rings can be stitched between them.
+constexpr int corner_segments = 8;
+constexpr int contour_points = 4 * (corner_segments + 1);
+
+void contour(ImVec2 min, ImVec2 max, float r, ImVec2 *pts, ImVec2 *normals) {
+  r = std::max(0.f, std::min(r, std::min(max.x - min.x, max.y - min.y) / 2));
+  const ImVec2 centers[4] = {{min.x + r, min.y + r}, {max.x - r, min.y + r}, {max.x - r, max.y - r}, {min.x + r, max.y - r}};
+  const float start[4] = {3.14159265f, 4.71238898f, 0.f, 1.57079633f}; // TL, TR, BR, BL
+  int n = 0;
+  for (int c = 0; c < 4; ++c)
+    for (int k = 0; k <= corner_segments; ++k) {
+      const float a = start[c] + 1.57079633f * float(k) / float(corner_segments);
+      const ImVec2 dir(std::cos(a), std::sin(a));
+      if (normals) normals[n] = dir;
+      pts[n++] = ImVec2(centers[c].x + dir.x * r, centers[c].y + dir.y * r);
+    }
+}
+} // namespace
+
 void shadow(ImDrawList *list, const ImRect &box, float radius_px, const Shadow &s) {
-  if (s.color.a <= 0) return;
-  // A Gaussian blur of a rounded box, approximated by stacked translucent
-  // boxes whose edges spread over [-blur/2, +blur/2] around the shadow edge.
+  if (s.color.a <= 0 || box.GetWidth() <= 0 || box.GetHeight() <= 0) return;
+  // CSS box-shadow: the box offset and spread, blurred across [-blur/2,
+  // +blur/2] around its edge (a linear ramp approximates the Gaussian), and
+  // never drawn inside the element's own box. Built as two rings stitched
+  // between matching points of rounded-rectangle contours:
+  //   box edge -> inner shadow edge: solid;  inner -> outer edge: fade out.
   const float blur = px(s.blur), spread = px(s.spread);
   const ImVec2 off(px(s.x), px(s.y));
-  const int steps = std::clamp(int(std::ceil(blur)), 1, 16);
-  const float layer_alpha = 1.f - std::pow(1.f - s.color.a, 1.f / float(steps));
-  const ImU32 col = s.color.with_alpha(layer_alpha).u32();
-  for (int i = 0; i < steps; ++i) {
-    const float t = steps == 1 ? 0.5f : float(i) / float(steps - 1);
-    const float grow = spread + blur * (0.5f - t);
-    const ImVec2 a(box.Min.x + off.x - grow, box.Min.y + off.y - grow);
-    const ImVec2 b(box.Max.x + off.x + grow, box.Max.y + off.y + grow);
-    if (b.x <= a.x || b.y <= a.y) continue;
-    list->AddRectFilled(a, b, col, std::max(0.f, radius_px + grow));
+  const float half = blur / 2;
+  const float r_shadow = std::max(0.f, radius_px + spread);
+  ImVec2 a[contour_points], n[contour_points], inner[contour_points], outer[contour_points];
+  contour(box.Min, box.Max, radius_px, a, n);
+  contour(ImVec2(box.Min.x + off.x - spread + half, box.Min.y + off.y - spread + half),
+          ImVec2(box.Max.x + off.x + spread - half, box.Max.y + off.y + spread - half), std::max(0.f, r_shadow - half),
+          inner, nullptr);
+  contour(ImVec2(box.Min.x + off.x - spread - half, box.Min.y + off.y - spread - half),
+          ImVec2(box.Max.x + off.x + spread + half, box.Max.y + off.y + spread + half), r_shadow + half, outer,
+          nullptr);
+  // Keep every ring point outside the box (clip the shadow out of the box).
+  auto outside = [&](int i, ImVec2 p) {
+    const float d = (p.x - a[i].x) * n[i].x + (p.y - a[i].y) * n[i].y;
+    return d < 0 ? a[i] : p;
+  };
+  for (int i = 0; i < contour_points; ++i) inner[i] = outside(i, inner[i]), outer[i] = outside(i, outer[i]);
+
+  const ImU32 solid = s.color.u32();
+  const ImU32 clear = s.color.with_alpha(0).u32();
+  const ImVec2 uv = list->_Data->TexUvWhitePixel;
+  const int quads = contour_points * 2;
+  list->PrimReserve(quads * 6, quads * 4);
+  for (int i = 0; i < contour_points; ++i) {
+    const int j = (i + 1) % contour_points;
+    const ImVec2 ring[2][4] = {{a[i], a[j], inner[j], inner[i]}, {inner[i], inner[j], outer[j], outer[i]}};
+    const ImU32 cols[2][4] = {{solid, solid, solid, solid}, {solid, solid, clear, clear}};
+    for (int r = 0; r < 2; ++r) {
+      const ImDrawIdx base = ImDrawIdx(list->_VtxCurrentIdx);
+      for (int v = 0; v < 4; ++v) list->PrimWriteVtx(ring[r][v], uv, cols[r][v]);
+      list->PrimWriteIdx(base), list->PrimWriteIdx(ImDrawIdx(base + 1)), list->PrimWriteIdx(ImDrawIdx(base + 2));
+      list->PrimWriteIdx(base), list->PrimWriteIdx(ImDrawIdx(base + 2)), list->PrimWriteIdx(ImDrawIdx(base + 3));
+    }
   }
 }
 

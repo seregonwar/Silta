@@ -33,7 +33,9 @@ struct FlexOptions {
   Axis axis = Axis::column;
   float gap = 0;   // points
   Edges padding;   // points
-  Align align = Align::start;
+  // Cross-axis alignment. Like CSS flexbox, the default stretches children
+  // that can stretch (containers, fill-width controls) across the container.
+  Align align = Align::stretch;
   Justify justify = Justify::start;
   float width = 0;  // points, 0 = fit content, fill = available
   float height = 0; // points, 0 = fit content, fill = available
@@ -55,6 +57,16 @@ float resolve_height(float points, float content_px);
 // Tailwind breakpoints on the viewport width (sm 640, md 768, lg 1024, xl 1280).
 enum class Breakpoint { sm, md, lg, xl };
 bool at_least(Breakpoint breakpoint);
+
+// Starts a fresh layout root for a new ImGui window (popup, dialog, child)
+// opened in the middle of a layout, and restores the outer one afterwards.
+class [[nodiscard]] Isolate {
+public:
+  Isolate();
+  ~Isolate();
+  Isolate(const Isolate &) = delete;
+  Isolate &operator=(const Isolate &) = delete;
+};
 
 // Internal.
 void begin_frame();

@@ -26,12 +26,17 @@ add_library(silta
   src/draw.cpp
   src/icons.cpp
   src/text.cpp
+  src/texture.cpp
   src/components/button.cpp
   src/components/badge.cpp
   src/components/card.cpp
   src/components/switch.cpp
   src/components/input.cpp
   src/components/separator.cpp
+  src/components/overlay.cpp
+  src/components/controls.cpp
+  src/components/panels.cpp
+  src/components/toast.cpp
 )
 add_library(Silta::silta ALIAS silta)
 target_include_directories(silta PUBLIC
@@ -56,7 +61,7 @@ endif()
 # and drive silta from their own ImGui frame.
 # ---------------------------------------------------------------------------
 if(SILTA_APP)
-  add_library(silta_app src/app/app.cpp)
+  add_library(silta_app src/app/app.cpp src/app/dialogs.cpp)
   add_library(Silta::app ALIAS silta_app)
   target_link_libraries(silta_app PUBLIC silta PRIVATE glfw)
   target_sources(silta_app PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp)
@@ -64,6 +69,9 @@ if(SILTA_APP)
   if(MSVC)
     target_compile_options(silta_app PRIVATE /W3 /utf-8)
     target_compile_definitions(silta_app PRIVATE _CRT_SECURE_NO_WARNINGS)
+  endif()
+  if(WIN32)
+    target_link_libraries(silta_app PRIVATE ole32 shell32 uuid)
   endif()
 
   if(SILTA_RENDERER_D3D11)

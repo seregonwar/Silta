@@ -1,6 +1,7 @@
 #include "silta/context.hpp"
 #include "silta/anim.hpp"
 #include "silta/layout.hpp"
+#include "silta/texture.hpp"
 #include "imgui.h"
 #ifdef IMGUI_ENABLE_FREETYPE
 #include "misc/freetype/imgui_freetype.h"
@@ -29,6 +30,7 @@ struct State {
   Fonts fonts;
   int pending_frames = 2;
   bool initialized = false;
+  double wake_at = -1; // ImGui time of the earliest requested wake-up
 };
 State state;
 
@@ -167,6 +169,9 @@ bool init(const InitOptions &options) {
 void shutdown() { state = State{}; }
 
 void begin_frame() {
+  // A wake-up that is due has done its job; components ask again if needed.
+  if (state.wake_at >= 0 && ImGui::GetTime() >= state.wake_at) state.wake_at = -1;
+  detail::collect_textures();
   anim::begin_frame();
   layout::begin_frame();
 }
@@ -201,9 +206,20 @@ bool wants_frame() { return state.pending_frames > 0 || anim::running() || layou
 
 void request_frames(int count) { state.pending_frames = std::max(state.pending_frames, count); }
 
+void wake_in(double seconds) {
+  if (!ImGui::GetCurrentContext()) return;
+  const double at = ImGui::GetTime() + std::max(0.0, seconds);
+  if (state.wake_at < 0 || at < state.wake_at) state.wake_at = at;
+}
+
 double idle_timeout() {
-  if (ImGui::GetCurrentContext() && ImGui::GetIO().WantTextInput) return 0.1; // caret blink
-  return -1;
+  if (!ImGui::GetCurrentContext()) return -1;
+  double timeout = ImGui::GetIO().WantTextInput ? 0.1 : -1; // caret blink
+  if (state.wake_at >= 0) {
+    const double until = std::max(0.0, state.wake_at - ImGui::GetTime());
+    timeout = timeout < 0 ? until : std::min(timeout, until);
+  }
+  return timeout;
 }
 
 } // namespace silta

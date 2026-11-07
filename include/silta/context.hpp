@@ -52,6 +52,8 @@ const Fonts &fonts();
 // otherwise wait for input.
 bool wants_frame();
 void request_frames(int count = 1);
+// Asks for a frame `seconds` from now (timers: tooltip delays, toasts, ...).
+void wake_in(double seconds);
 // Seconds the host may sleep before the next frame is needed (e.g. caret
 // blink). Negative: sleep until there is input.
 double idle_timeout();

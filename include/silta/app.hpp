@@ -9,10 +9,23 @@
 // they call silta::begin_frame()/end_frame() inside their own ImGui frame.
 #include <functional>
 #include <memory>
+#include <optional>
+#include <span>
+#include <string>
 #include <vector>
 #include "silta/context.hpp"
 
 namespace silta {
+
+// Native file dialogs (UTF-8 paths). Filters: {"Video", "*.mp4;*.mov"}.
+struct FileFilter {
+  const char *name;
+  const char *patterns;
+};
+std::vector<std::string> open_file_dialog(std::span<const FileFilter> filters = {}, bool multiple = false,
+                                          const char *title = nullptr);
+std::optional<std::string> save_file_dialog(std::span<const FileFilter> filters = {},
+                                            const char *default_name = nullptr, const char *title = nullptr);
 
 enum class Backend { automatic, d3d11, vulkan };
 
@@ -53,6 +66,10 @@ public:
   void screenshot(const char *png_path);
   // Ends run() after the current frame.
   void close();
+
+  // Files dropped on the window since the last call (UTF-8 paths).
+  std::vector<std::string> take_dropped_files();
+  void set_title(const char *title);
 
   struct Impl;
 

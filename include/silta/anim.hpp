@@ -23,6 +23,9 @@ inline constexpr float default_duration = 0.15f;
 // current value.
 float tween(ImGuiID id, float target, float duration = default_duration, Ease ease = Ease::standard);
 
+// Jumps a value without animating (e.g. restart an enter animation from 0).
+void reset(ImGuiID id, float value);
+
 // ID for one animated property of an item: sub_id(item_id, "hover").
 ImGuiID sub_id(ImGuiID item, const char *property);
 

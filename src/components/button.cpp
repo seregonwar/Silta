@@ -66,7 +66,8 @@ bool Button(const char *label, const ButtonOptions &o) {
   const float pad = px(has_icon ? m.pad_x_with_icon : m.pad_x);
   const float h = px(m.height);
   const float natural_w = o.size == Size::icon ? h : content + 2 * pad;
-  const float w = layout::resolve_width(o.width, natural_w);
+  // Icon buttons have an explicit size (size-9): they never stretch.
+  const float w = o.size == Size::icon && o.width == 0 ? natural_w : layout::resolve_width(o.width, natural_w);
   const ImRect box = layout::allocate(ImVec2(w, h), o.width == fill);
 
   detail::DisabledScope disabled(o.disabled || o.loading);

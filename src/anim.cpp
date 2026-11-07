@@ -88,6 +88,12 @@ float tween(ImGuiID id, float target, float duration, Ease ease) {
   return tw.value;
 }
 
+void reset(ImGuiID id, float value) {
+  Tween &tw = tweens[id];
+  tw.from = tw.to = tw.value = value;
+  tw.last_frame = ImGui::GetFrameCount();
+}
+
 void begin_frame() { any_running = false; }
 
 void end_frame() {

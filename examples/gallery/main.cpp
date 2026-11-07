@@ -23,6 +23,15 @@ struct State {
   std::string framework = "Next.js";
   int clicks = 0;
   long frames = 0;
+  // Overlays and controls
+  int fruit = -1;
+  bool show_status = true, show_activity = false;
+  bool terms = true, newsletter = false;
+  float volume = 66, brightness = 0.4f;
+  int tab = 0, tool = 0;
+  bool bold = false, italic = true;
+  float progress = 0.25f;
+  std::string profile_name = "Pedro Duarte", profile_user = "@peduarte";
   float scroll = 0; // --scroll=N (points), for screenshots
   Backend switch_to = Backend::automatic; // --switch-to=..., tests runtime switching
   bool hidden = false;                     // --hidden
@@ -30,6 +39,7 @@ struct State {
   std::vector<std::string> script;
   size_t step = 0;
   int wait = 0;
+  double sleep_until = 0;
 };
 
 // Plays the test script by feeding ImGui the same events a user would make.
@@ -41,6 +51,7 @@ void run_script(State &s, App &app) {
     --s.wait;
     return;
   }
+  if (ImGui::GetTime() < s.sleep_until) return;
   ImGuiIO &io = ImGui::GetIO();
   const std::string &cmd = s.script[s.step++];
   const size_t colon = cmd.find(':');
@@ -65,6 +76,8 @@ void run_script(State &s, App &app) {
     io.AddKeyEvent(key, false);
   } else if (verb == "wait") {
     s.wait = std::stoi(arg);
+  } else if (verb == "sleep") { // real time, so animations can finish
+    s.sleep_until = ImGui::GetTime() + std::stof(arg) / 1000.0;
   } else if (verb == "shot") {
     app.screenshot(arg.c_str());
   } else if (verb == "quit") {
@@ -77,7 +90,7 @@ void apply_theme(const State &s) { set_theme(s.dark ? Theme::dark(s.base) : Them
 // A titled block: heading and description, then the examples 16pt below.
 class [[nodiscard]] Section {
 public:
-  Section(const char *title, const char *description) : block_(FlexOptions{.gap = 16}) {
+  Section(const char *title, const char *description) : block_(FlexOptions{.gap = 16, .align = Align::stretch}) {
     auto col = Column({.gap = 4});
     Text(title, {.size = TextSize::xl, .weight = Weight::semibold});
     Text(description, {.muted = true});
@@ -246,6 +259,167 @@ void palette(State &s) {
   }
 }
 
+
+void overlays(State &s) {
+  auto section = Section("Overlays", "Popover, Dropdown Menu, Select, Tooltip and Dialog.");
+  auto row = Row({.gap = 8, .align = Align::center});
+
+  if (Button("Open popover", {.variant = Variant::outline})) OpenPopover("dimensions");
+  if (auto pop = Popover("dimensions", {.width = 320, .gap = 16})) {
+    {
+      auto head = Column({.gap = 6});
+      Text("Dimensions", {.weight = Weight::medium, .line_height = 14});
+      Text("Set the dimensions for the layer.", {.wrap = true, .muted = true});
+    }
+    static std::string width = "100%", height = "25px";
+    for (auto [label, value] : {std::pair{"Width", &width}, std::pair{"Height", &height}}) {
+      auto field = Row({.gap = 16, .align = Align::center});
+      { auto l = Column({.width = 70}); Label(label); }
+      Input(label, value, {.width = fill});
+    }
+  }
+
+  if (Button("Menu", {.variant = Variant::outline, .trailing_icon = Icon::chevron_down})) OpenPopover("menu");
+  if (auto menu = DropdownMenu("menu", {.min_width = 224})) {
+    MenuLabel("My Account");
+    MenuSeparator();
+    MenuItem("Profile", {.icon = Icon::user, .shortcut = "Shift+Ctrl+P"});
+    MenuItem("Settings", {.icon = Icon::settings, .shortcut = "Ctrl+S"});
+    MenuItem("Notifications", {.icon = Icon::bell});
+    MenuSeparator();
+    MenuCheckbox("Status Bar", &s.show_status);
+    MenuCheckbox("Activity Bar", &s.show_activity);
+    MenuSeparator();
+    if (MenuItem("Delete project", {.icon = Icon::trash, .destructive = true}))
+      toast("Project deleted", {.kind = ToastKind::error});
+    MenuItem("API (disabled)", {.disabled = true});
+  }
+
+  static const char *const fruits[] = {"Apple", "Banana", "Blueberry", "Grapes", "Pineapple"};
+  if (Select("fruit", &s.fruit, fruits, {.placeholder = "Select a fruit", .width = 180}))
+    toast("Fruit selected", {.description = fruits[s.fruit]});
+
+  Button("##info", {.variant = Variant::outline, .size = Size::icon, .icon = Icon::info});
+  Tooltip("Add to library");
+
+  if (Button("Edit profile", {.variant = Variant::outline})) OpenDialog("profile");
+  if (auto dlg = Dialog("profile", {.title = "Edit profile",
+                                    .description = "Make changes to your profile here. Click save when you're done.",
+                                    .width = 425})) {
+    {
+      auto fields = Column({.gap = 16});
+      for (auto [label, value] : {std::pair{"Name", &s.profile_name}, std::pair{"Username", &s.profile_user}}) {
+        auto field = Column({.gap = 8});
+        Label(label);
+        Input(label, value);
+      }
+    }
+    auto footer = DialogFooter();
+    if (Button("Cancel", {.variant = Variant::outline})) CloseDialog();
+    if (Button("Save changes")) {
+      CloseDialog();
+      toast("Profile updated", {.description = s.profile_name.c_str(), .kind = ToastKind::success});
+    }
+  }
+
+  if (Button("Show toast", {.variant = Variant::secondary}))
+    toast("Event has been created", {.description = "Sunday, December 03, 2023 at 9:00 AM"});
+}
+
+void controls(State &s) {
+  auto section = Section("Controls", "Checkbox, Slider, Tabs, Toggle, Toggle Group, Progress and Kbd.");
+  {
+    auto row = Row({.gap = 24, .align = Align::center});
+    Checkbox("Accept terms and conditions", &s.terms);
+    Checkbox("Newsletter", &s.newsletter);
+    static bool off = false;
+    Checkbox("Disabled", &off, {.disabled = true});
+  }
+  {
+    auto row = Row({.gap = 24, .align = Align::center, .width = fill});
+    { auto c = Column({.width = 300}); Slider("volume", &s.volume, 0, 100, {.step = 1}); }
+    char v[32];
+    std::snprintf(v, sizeof v, "Volume %.0f", s.volume);
+    Text(v, {.muted = true});
+    { auto c = Column({.width = 200}); Slider("brightness", &s.brightness, 0, 1); }
+  }
+  {
+    auto row = Row({.gap = 24, .align = Align::center});
+    static const char *const tabs[] = {"Account", "Password", "Notifications"};
+    Tabs("tabs", &s.tab, tabs);
+    static const char *const views[] = {"Day", "Week", "Month"};
+    static int view = 1;
+    { auto c = Column({.width = 260}); Tabs("views", &view, views, {.width = fill}); }
+  }
+  {
+    auto row = Row({.gap = 12, .align = Align::center});
+    Toggle("##bold", &s.bold, {.icon = Icon::type});
+    Toggle("Italic", &s.italic, {.outline = true});
+    static const ToggleGroupItem tools[] = {{nullptr, Icon::pointer, "Select (V)"},
+                                            {nullptr, Icon::scissors, "Razor (C)"},
+                                            {nullptr, Icon::magnet, "Snapping (N)"}};
+    ToggleGroup("tools", &s.tool, tools, {.outline = true});
+    static const ToggleGroupItem sizes[] = {{"S"}, {"M"}, {"L"}};
+    static int size = 1;
+    ToggleGroup("sizes", &size, sizes, {.size = Size::sm});
+  }
+  {
+    auto row = Row({.gap = 16, .align = Align::center, .width = fill});
+    { auto c = Column({.width = 300}); Progress("progress", s.progress); }
+    if (Button("+10%", {.variant = Variant::outline, .size = Size::sm})) s.progress = std::min(1.f, s.progress + 0.1f);
+    if (Button("Reset", {.variant = Variant::ghost, .size = Size::sm})) s.progress = 0;
+    Text("Press", {.muted = true});
+    Kbd("Ctrl");
+    Kbd("K");
+    Text("to search", {.muted = true});
+  }
+}
+
+void icons() {
+  auto section = Section("Icons", "Lucide-style vector icons, crisp at any scale.");
+  static const Icon all[] = {Icon::check, Icon::x, Icon::plus, Icon::minus, Icon::chevron_down,
+                             Icon::chevrons_up_down, Icon::arrow_right, Icon::more_horizontal, Icon::grip_vertical,
+                             Icon::search, Icon::settings, Icon::user, Icon::bell, Icon::info, Icon::alert, Icon::sun,
+                             Icon::moon, Icon::maximize, Icon::copy, Icon::eye, Icon::eye_off, Icon::lock,
+                             Icon::unlock, Icon::mail, Icon::folder_open, Icon::upload, Icon::download, Icon::film,
+                             Icon::image, Icon::music, Icon::type, Icon::layers, Icon::play, Icon::pause,
+                             Icon::skip_back, Icon::skip_forward, Icon::volume, Icon::volume_off, Icon::scissors,
+                             Icon::trash, Icon::undo, Icon::redo, Icon::zoom_in, Icon::zoom_out, Icon::magnet,
+                             Icon::pointer};
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+  const size_t per_row = 23;
+  for (size_t start = 0; start < std::size(all); start += per_row) {
+    auto row = Row({.gap = 20});
+    for (size_t i = start; i < std::min(std::size(all), start + per_row); ++i) {
+      const ImRect r = layout::allocate(ImVec2(px(20), px(20)));
+      draw_icon(dl, all[i], r.Min, px(20), theme().foreground);
+    }
+  }
+}
+
+void panels() {
+  auto section = Section("Resizable and Scroll Area", "Drag the divider; the list scrolls inside its pane.");
+  auto frame = Column({.width = fill, .height = 220});
+  const ImRect r = frame.rect();
+  if (r.GetWidth() > 0) draw::border(ImGui::GetWindowDrawList(), r, theme().border, px(theme().radius_lg()), px(1));
+  auto split = Split("gallery-split", {.initial = 0.35f});
+  {
+    auto left = split.first();
+    auto scroll = ScrollArea("tags", {.padding = Edges::all(16), .gap = 8});
+    Text("Tags", {.weight = Weight::medium});
+    for (int i = 1; i <= 30; ++i) {
+      char tag[32];
+      std::snprintf(tag, sizeof tag, "v1.2.0-beta.%d", 31 - i);
+      Text(tag);
+      Separator();
+    }
+  }
+  {
+    auto right = split.second({.padding = Edges::all(24), .align = Align::center, .justify = Justify::center});
+    Text("Content", {.size = TextSize::lg, .weight = Weight::semibold});
+  }
+}
+
 // --backend=vulkan|d3d11  --dark  --base=zinc|slate|stone|gray  --scroll=N
 // --switch-to=vulkan|d3d11 (swaps the renderer at frame 3)  --hidden  --script=...
 Backend parse_args(int argc, char **argv, State &s) {
@@ -291,7 +465,7 @@ int main(int argc, char **argv) {
     const float pad = layout::at_least(layout::Breakpoint::md) ? 40.f : 16.f;
     auto page = Row({.padding = Edges::all(pad), .justify = Justify::center, .width = fill});
     const float avail = ImGui::GetContentRegionAvail().x / scale() - 2 * pad;
-    auto content = Column({.gap = 40, .width = std::min(1024.f, std::max(320.f, avail))});
+    auto content = Column({.gap = 40, .align = Align::stretch, .width = std::min(1024.f, std::max(320.f, avail))});
 
     header(s, app);
     Separator();
@@ -301,10 +475,15 @@ int main(int argc, char **argv) {
     switches(s);
     inputs(s);
     cards(s);
+    overlays(s);
+    controls(s);
+    panels();
+    icons();
     Separator();
     char status[128];
     std::snprintf(status, sizeof status, "Renderer: %s  ·  Frames rendered: %ld (rendering on demand)",
                   backend_name(app.backend()), s.frames);
     Text(status, {.size = TextSize::xs, .muted = true});
+    Toaster();
   });
 }

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <utility>
 
 namespace silta {
 
@@ -58,6 +59,7 @@ struct App::Impl {
   bool glfw_ready = false;
   bool input_seen = false;
   std::string screenshot_path; // pending screenshot
+  std::vector<std::string> dropped;
   // SILTA_TRACE=<file>: logs why each frame was rendered.
   std::FILE *trace = nullptr;
 
@@ -131,6 +133,10 @@ struct App::Impl {
   }
 };
 
+namespace detail {
+GLFWwindow *main_window = nullptr; // parent for native dialogs
+}
+
 namespace {
 App::Impl *impl_of(GLFWwindow *w) { return static_cast<App::Impl *>(glfwGetWindowUserPointer(w)); }
 void mark(GLFWwindow *w) {
@@ -152,6 +158,7 @@ App::App(const AppOptions &options) : impl_(std::make_unique<Impl>()) {
   a.window = glfwCreateWindow(options.width, options.height, options.title, nullptr, nullptr);
   if (!a.window) return;
   glfwSetWindowUserPointer(a.window, &a);
+  detail::main_window = a.window;
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -176,6 +183,12 @@ App::App(const AppOptions &options) : impl_(std::make_unique<Impl>()) {
   glfwSetCursorEnterCallback(a.window, [](GLFWwindow *w, int) { mark(w); });
   glfwSetWindowFocusCallback(a.window, [](GLFWwindow *w, int) { mark(w); });
   glfwSetFramebufferSizeCallback(a.window, [](GLFWwindow *w, int, int) { mark(w); });
+  glfwSetDropCallback(a.window, [](GLFWwindow *w, int count, const char **paths) {
+    if (Impl *p = impl_of(w)) {
+      for (int i = 0; i < count; ++i) p->dropped.emplace_back(paths[i]);
+      p->input_seen = true;
+    }
+  });
   ImGui_ImplGlfw_InitForOther(a.window, true);
   if (!a.start_renderer(options.backend)) {
     std::fprintf(stderr, "silta: no renderer could be started\n");
@@ -201,6 +214,7 @@ App::~App() {
     shutdown();
     ImGui::DestroyContext();
   }
+  if (detail::main_window == a.window) detail::main_window = nullptr;
   if (a.window) glfwDestroyWindow(a.window);
   if (a.glfw_ready) glfwTerminate();
   if (a.trace) std::fclose(a.trace);
@@ -247,6 +261,12 @@ int App::run(const std::function<void()> &frame) {
 void App::screenshot(const char *png_path) {
   impl_->screenshot_path = png_path ? png_path : "";
   request_frames(1);
+}
+
+std::vector<std::string> App::take_dropped_files() { return std::exchange(impl_->dropped, {}); }
+
+void App::set_title(const char *title) {
+  if (impl_->window) glfwSetWindowTitle(impl_->window, title);
 }
 
 void App::close() {

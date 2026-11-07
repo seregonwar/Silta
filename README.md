@@ -61,7 +61,23 @@ their own ImGui frame.
 | `Input` | `placeholder`, `password`, `disabled`, `width`; `char*` or `std::string` |
 | `Separator` | horizontal or vertical |
 | `Text`, `Label` | Tailwind sizes `xs`…`4xl`, weights, muted, wrapping, `leading-*` |
-| Icons | Lucide-style vector strokes (check, x, plus, chevrons, mail, search, loader, bell, settings, user) |
+| `Checkbox`, `Slider` | labels, disabled; slider: drag, track click, arrows/Home/End, step |
+| `Tabs` | sliding active indicator, fit or equal width |
+| `Toggle`, `ToggleGroup` | default/outline, icons, joined groups with tooltips |
+| `Progress`, `Kbd` | animated value; key caps |
+| `Popover` | anchored to its trigger, side/align, flips at the viewport edge |
+| `DropdownMenu` | `MenuItem` (icon, shortcut, destructive, disabled), `MenuCheckbox`, `MenuLabel`, `MenuSeparator` |
+| `Select` | placeholder, checked item, keyboard navigation |
+| `Tooltip` | delay, arrow, shows on hover or keyboard focus |
+| `Dialog` | modal, title/description, close button, Escape/outside click, `DialogFooter` |
+| `toast` + `Toaster` | Sonner-style stack, success/info/warning/error, auto-dismiss |
+| `ScrollArea`, `Split` | clipped scrolling region; resizable panes with a draggable divider |
+| `Texture`, `Image` | GPU textures from CPU pixels on any backend (per-frame updates for video), contain/cover |
+| Icons | ~50 Lucide-style vector icons, including media transport and editing tools |
+
+Overlays open with shadcn's enter animation (fade + zoom from 95%). The app shell
+also offers native file dialogs (`open_file_dialog`, `save_file_dialog`) and files
+dropped on the window (`App::take_dropped_files`).
 
 ## Build
 
@@ -106,5 +122,5 @@ assets/fonts/    Inter 4.1 (SIL Open Font License, see Inter-LICENSE.txt)
 ## Status
 
 Version 0.1, Windows-tested (D3D11 and Vulkan). Not done yet: Metal and other
-platforms' shells, more components (Checkbox, Select, Dialog, Popover, Tabs,
-Tooltip…), accessibility, a Rust binding over a C ABI.
+platforms' shells (and their file dialogs), overlay exit animations,
+accessibility, a Rust binding over a C ABI.

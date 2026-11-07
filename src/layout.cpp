@@ -40,6 +40,7 @@ struct Live {
 std::unordered_map<ImGuiID, Memory> memories;
 std::unordered_map<ImGuiID, int> root_sequence;
 std::vector<Live> stack;
+std::vector<std::vector<Live>> saved_stacks; // outer layouts while isolated
 bool layout_changed = false;
 
 float snap(float v) { return std::floor(v + 0.5f); }
@@ -129,6 +130,17 @@ ImRect allocate(ImVec2 size, bool grow) {
   return {pos, ImVec2(pos.x + size.x, pos.y + size.y)};
 }
 
+Isolate::Isolate() {
+  saved_stacks.push_back(std::move(stack));
+  stack.clear();
+}
+
+Isolate::~Isolate() {
+  IM_ASSERT(stack.empty() && "silta: a Flex scope was not closed inside an isolated layout");
+  stack = std::move(saved_stacks.back());
+  saved_stacks.pop_back();
+}
+
 bool at_least(Breakpoint breakpoint) {
   static constexpr float widths[] = {640, 768, 1024, 1280};
   const float w = ImGui::GetMainViewport()->Size.x / scale();
@@ -139,6 +151,7 @@ void begin_frame() {
   layout_changed = false;
   root_sequence.clear();
   stack.clear();
+  saved_stacks.clear();
 }
 
 void end_frame() {
