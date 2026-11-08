@@ -211,7 +211,8 @@ Silta is an early-stage project, currently version 0.1. The desktop application
 shell has been exercised on Windows with Direct3D 11 and Vulkan. Core library
 builds are checked separately on Linux and macOS; their native application shells
 and file dialogs are not complete. Metal, accessibility support, overlay exit
-animations and a C ABI/Rust binding remain future work.
+animations and a C ABI/Rust binding remain future work; [ROADMAP.md](ROADMAP.md)
+lays out the milestones from here to 1.0.
 
 Bug reports and focused pull requests are welcome. Include the compiler,
 renderer, reproduction steps and relevant logs with a report. For a code change,
