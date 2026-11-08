@@ -43,7 +43,7 @@ jobs:
             freetype: 'ON'
           - os: ubuntu-24.04
             freetype: 'OFF'
-          - os: macos-14
+          - os: macos-15
             freetype: 'ON'
           - os: windows-2022
             freetype: 'ON'
