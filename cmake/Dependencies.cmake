@@ -94,6 +94,56 @@ else()
   set(SILTA_VENDORED_FREETYPE ${SILTA_FREETYPE})
 endif()
 
+# --------------------------------------------------------------- shaping
+# Complex scripts (Arabic, Hebrew, Indic, Thai, ...) are shaped by HarfBuzz,
+# ordered by SheenBidi (Unicode bidirectional algorithm) and rasterized by
+# FreeType into Silta's own glyph atlas. Both are built from source as static
+# libraries; licences: HarfBuzz "Old MIT", SheenBidi Apache-2.0.
+set(SILTA_SHAPING_ACTIVE OFF)
+if(SILTA_SHAPING)
+  if(NOT TARGET freetype)
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(freetype
+      GIT_REPOSITORY https://github.com/freetype/freetype.git
+      GIT_TAG VER-2-13-3
+      GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(freetype)
+  endif()
+  # Sources only (their own CMake projects add tests and install rules).
+  FetchContent_Declare(harfbuzz
+    GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git
+    GIT_TAG 14.6.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR silta-sources-only)
+  FetchContent_Declare(sheenbidi
+    GIT_REPOSITORY https://github.com/Tehreer/SheenBidi.git
+    GIT_TAG v2.9.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR silta-sources-only)
+  FetchContent_MakeAvailable(harfbuzz sheenbidi)
+
+  # HarfBuzz's single-file amalgamation; no FreeType/ICU/GLib integration needed.
+  add_library(silta_harfbuzz STATIC ${harfbuzz_SOURCE_DIR}/src/harfbuzz.cc)
+  set_target_properties(silta_harfbuzz PROPERTIES EXPORT_NAME harfbuzz POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(silta_harfbuzz PUBLIC $<BUILD_INTERFACE:${harfbuzz_SOURCE_DIR}/src>)
+  target_compile_definitions(silta_harfbuzz PRIVATE HB_NO_MT)
+  if(MSVC)
+    target_compile_options(silta_harfbuzz PRIVATE /bigobj /W0)
+  endif()
+
+  add_library(silta_sheenbidi STATIC ${sheenbidi_SOURCE_DIR}/Source/SheenBidi.c)
+  set_target_properties(silta_sheenbidi PROPERTIES EXPORT_NAME sheenbidi POSITION_INDEPENDENT_CODE ON)
+  target_compile_definitions(silta_sheenbidi PRIVATE SB_CONFIG_UNITY)
+  target_include_directories(silta_sheenbidi
+    PUBLIC $<BUILD_INTERFACE:${sheenbidi_SOURCE_DIR}/Headers>
+    PRIVATE ${sheenbidi_SOURCE_DIR}/Source)
+  set(SILTA_SHAPING_ACTIVE ON)
+endif()
+
 if(SILTA_APP)
   set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
   set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)

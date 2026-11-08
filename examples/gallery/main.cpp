@@ -380,28 +380,28 @@ void controls(State &s) {
 }
 
 void languages() {
-  auto section = Section("Languages", "Fallback fonts from the system cover the scripts Inter lacks.");
+  auto section = Section("Languages", "System fallback fonts and HarfBuzz shaping cover every script, in both directions.");
   struct Sample {
     const char *name, *text;
-    bool shaped; // renders correctly without text shaping
   };
   static const Sample samples[] = {
-      {"English", "The quick brown fox jumps over the lazy dog", true},
-      {"Ελληνικά", "Γειά σου κόσμε", true},
-      {"Русский", "Съешь же ещё этих мягких французских булок", true},
-      {"中文", "你好，世界。设计系统让界面保持一致。", true},
-      {"日本語", "こんにちは世界。デザインシステム。", true},
-      {"한국어", "안녕하세요 세계. 디자인 시스템.", true},
-      {"Emoji", "🎬 🎧 ✨ 👍 🚀", true},
-      {"हिन्दी", "नमस्ते दुनिया", false},
-      {"ไทย", "สวัสดีชาวโลก", false},
-      {"العربية", "مرحبا بالعالم", false},
+      {"English", "The quick brown fox jumps over the lazy dog"},
+      {"Ελληνικά", "Γειά σου κόσμε"},
+      {"Русский", "Съешь же ещё этих мягких французских булок"},
+      {"中文", "你好，世界。设计系统让界面保持一致。"},
+      {"日本語", "こんにちは世界。デザインシステム。"},
+      {"한국어", "안녕하세요 세계. 디자인 시스템."},
+      {"हिन्दी", "नमस्ते दुनिया, क्षमा कीजिए"},
+      {"ไทย", "สวัสดีชาวโลก ภาษาไทย"},
+      {"العربية", "مرحبا بالعالم"},
+      {"עברית", "שלום עולם"},
+      {"Bidi", "Silta 0.3 يدعم العربية and English"},
+      {"Emoji", "🎬 🎧 ✨ 👍🏽 🇮🇹 👩‍👩‍👧 🚀"},
   };
   for (const Sample &sample : samples) {
     auto row = Row({.gap = 16, .align = Align::center});
     { auto name = Column({.width = 96}); Text(sample.name, {.weight = Weight::medium}); }
     Text(sample.text, {.size = TextSize::lg});
-    if (!sample.shaped) Badge("needs shaping (0.3)", {.variant = Variant::outline});
   }
 }
 

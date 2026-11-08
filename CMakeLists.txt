@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(SILTA_FREETYPE "Rasterize text with FreeType (recommended; with the fetched ImGui)" ON)
 option(SILTA_EMBED_FONTS "Build the Inter fonts into the library" ON)
+option(SILTA_SHAPING "Shape complex scripts and bidirectional text (HarfBuzz, SheenBidi, FreeType)" ON)
 option(SILTA_APP "Build the application shell (window + renderer backends)" ON)
 option(SILTA_INSTALL "Generate install rules and the Silta CMake package" ${PROJECT_IS_TOP_LEVEL})
 option(SILTA_EXAMPLES "Build the examples" ${PROJECT_IS_TOP_LEVEL})
@@ -30,6 +31,7 @@ add_library(silta
   src/theme.cpp
   src/per_context.cpp
   src/fonts.cpp
+  src/shaper.cpp
   src/context.cpp
   src/anim.cpp
   src/layout.cpp
@@ -58,6 +60,10 @@ target_compile_definitions(silta PUBLIC
   SILTA_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
   SILTA_VERSION_MINOR=${PROJECT_VERSION_MINOR}
   SILTA_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+if(SILTA_SHAPING_ACTIVE)
+  target_link_libraries(silta PRIVATE silta_harfbuzz silta_sheenbidi freetype)
+  target_compile_definitions(silta PRIVATE SILTA_SHAPING)
+endif()
 if(SILTA_EMBED_FONTS)
   set(_silta_fonts_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/silta_fonts.cpp")
   silta_embed_fonts("${_silta_fonts_cpp}" "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts")
@@ -154,6 +160,9 @@ if(SILTA_INSTALL)
   set(_silta_targets silta)
   if(SILTA_VENDORED_IMGUI)
     list(APPEND _silta_targets silta_imgui)
+  endif()
+  if(SILTA_SHAPING_ACTIVE)
+    list(APPEND _silta_targets silta_harfbuzz silta_sheenbidi)
   endif()
   if(SILTA_APP)
     list(APPEND _silta_targets silta_app)

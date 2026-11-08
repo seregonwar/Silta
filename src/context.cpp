@@ -42,6 +42,8 @@ struct State {
   bool style_imgui = false;
   double wake_at = -1;           // ImGui time of the earliest requested wake-up
   std::vector<std::unique_ptr<detail::MappedFile>> font_files; // mapped font files
+  detail::FaceData inter[3];            // regular, medium, semibold
+  std::vector<detail::FaceData> fallback; // in lookup order
 };
 State &S() { return detail::per_context<State>(); }
 
@@ -199,9 +201,16 @@ bool load_fonts(const InitOptions &o) {
   // Each weight gets the same fallback chain; the files are mapped once.
   const std::vector<Fallback> fallbacks = fallback_fonts(o);
   st.fonts.fallback_count = int(fallbacks.size());
+  const Bytes m = read_source(medium), sb = read_source(semibold);
   st.fonts.regular = add_face(r, regular.index, "Inter Regular", fallbacks);
-  st.fonts.medium = add_face(read_source(medium), medium.index, "Inter Medium", fallbacks);
-  st.fonts.semibold = add_face(read_source(semibold), semibold.index, "Inter SemiBold", fallbacks);
+  st.fonts.medium = add_face(m, medium.index, "Inter Medium", fallbacks);
+  st.fonts.semibold = add_face(sb, semibold.index, "Inter SemiBold", fallbacks);
+  // The same faces, for the text shaper (missing weights use the previous).
+  st.inter[0] = {r.data, r.size, regular.index, false};
+  st.inter[1] = m.data ? detail::FaceData{m.data, m.size, medium.index, false} : st.inter[0];
+  st.inter[2] = sb.data ? detail::FaceData{sb.data, sb.size, semibold.index, false} : st.inter[1];
+  st.fallback.clear();
+  for (const Fallback &f : fallbacks) st.fallback.push_back({f.bytes.data, f.bytes.size, f.index, f.color});
   if (!st.fonts.medium) st.fonts.medium = st.fonts.regular;
   if (!st.fonts.semibold) st.fonts.semibold = st.fonts.medium;
   st.fonts.em_to_imgui = em_ratio(r.data, r.size);
@@ -222,6 +231,11 @@ bool init(const InitOptions &options) {
 }
 
 void shutdown() { detail::release_context(ImGui::GetCurrentContext()); }
+
+namespace detail {
+const FaceData &inter_face(int weight) { return S().inter[std::clamp(weight, 0, 2)]; }
+const std::vector<FaceData> &fallback_faces() { return S().fallback; }
+} // namespace detail
 
 void style_imgui() {
   if (!ImGui::GetCurrentContext()) return;

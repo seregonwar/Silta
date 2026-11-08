@@ -156,6 +156,7 @@ save/load is not implemented.
 | --- | --- | --- |
 | `SILTA_FREETYPE` | `ON` | Use FreeType to rasterize text (with the fetched ImGui) |
 | `SILTA_EMBED_FONTS` | `ON` | Build the Inter fonts into the library |
+| `SILTA_SHAPING` | `ON` | Shape complex scripts and right-to-left text (HarfBuzz, SheenBidi, FreeType) |
 | `SILTA_IMGUI_TARGET` | empty | Build against this existing ImGui target instead of fetching ImGui |
 | `SILTA_IMGUI_BACKENDS_DIR` | empty | ImGui backend sources for the shell when `SILTA_IMGUI_TARGET` lacks them |
 | `SILTA_INSTALL` | `ON` for a top-level build | Install rules and the `Silta` CMake package |

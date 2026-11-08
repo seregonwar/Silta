@@ -10,10 +10,17 @@ API, and these notes say how to update.
   user's language order, Indic, Thai, symbols, colour emoji). Configurable
   with `InitOptions::fallback` and `system_fallback`; font files are
   memory-mapped instead of copied.
+- Text shaping: `Text`, `Label` and every component label shape complex
+  scripts with HarfBuzz (Arabic joining, Indic conjuncts, Thai marks) and
+  order right-to-left and mixed text with the Unicode bidi algorithm
+  (SheenBidi). Emoji modifier, flag and ZWJ sequences become one glyph.
+  Enabled by `SILTA_SHAPING` (default on); Latin, CJK and other simple text
+  still uses ImGui's atlas.
 - `Textarea`: multi-line field that wraps and grows with its content.
 - ImGui is built with 32-bit characters (`IMGUI_USE_WCHAR32`) so emoji and
   other characters beyond U+FFFF render.
-- Gallery: a Languages section and a Textarea.
+- Gallery: a Languages section (with Hebrew, mixed bidi text and emoji
+  sequences) and a Textarea.
 
 ### Fixed
 - A row of automatic height did not grow with its stretched children (the

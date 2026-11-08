@@ -33,4 +33,16 @@ struct SystemFont {
 // CJK fonts of the user's language ahead of the others. Only existing files.
 std::vector<SystemFont> system_fallback_fonts();
 
+// A font face loaded by the current context (bytes owned by the context).
+struct FaceData {
+  const unsigned char *data = nullptr;
+  std::size_t size = 0;
+  int index = 0;
+  bool color = false;
+};
+// Inter for weight 0 (regular), 1 (medium) or 2 (semibold), and the fallback
+// chain shared by all weights, in lookup order. Used by the text shaper.
+const FaceData &inter_face(int weight);
+const std::vector<FaceData> &fallback_faces();
+
 } // namespace silta::detail

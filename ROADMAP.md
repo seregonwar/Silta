@@ -64,14 +64,17 @@ look; CI builds an out-of-tree consumer project against the installed package.
 
 ## 0.3: Text for every market
 
-Products are sold in more than Latin-script markets. Today Silta shapes
-nothing and has no font fallback.
+Products are sold in more than Latin-script markets.
 
-- [ ] **Shaping (L).** HarfBuzz for ligatures, kerning and complex scripts
-      (Arabic, Hebrew, Devanagari, Thai). Text runs cached by string, font and
-      size so immediate mode stays cheap.
-- [ ] **Bidirectional text (M).** Right-to-left and mixed runs (FriBidi or
-      ICU's bidi), RTL layout direction for rows.
+- [x] **Shaping (L).** HarfBuzz for complex scripts (Arabic, Hebrew,
+      Devanagari, Thai) and emoji sequences; shaped lines cached by string,
+      weight and size so immediate mode stays cheap. Text that does not need
+      it keeps ImGui's atlas path.
+- [x] **Bidirectional text (M).** Right-to-left and mixed runs ordered with
+      the Unicode bidi algorithm (SheenBidi).
+- [ ] **RTL layout (S).** Mirrored layout direction for rows and components.
+- [ ] **Shaped editing (M).** Input and Textarea still edit through ImGui,
+      which draws complex scripts unshaped.
 - [x] **Font fallback (M).** Per-codepoint fallback chain: Inter, then
       system fonts found per platform (CJK ordered for the user's language,
       Indic, Thai, symbols), colour emoji; files memory-mapped.

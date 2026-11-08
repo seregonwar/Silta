@@ -21,6 +21,8 @@ New-Item -ItemType Directory -Path $licenses -Force | Out-Null
 Copy-Item -LiteralPath "$build/_deps/imgui-src/LICENSE.txt" -Destination "$licenses/Dear-ImGui.txt"
 Copy-Item -LiteralPath "$build/_deps/glfw-src/LICENSE.md" -Destination "$licenses/GLFW.txt"
 Copy-Item -LiteralPath "$build/_deps/freetype-src/docs/FTL.TXT" -Destination "$licenses/FreeType.txt"
+Copy-Item -LiteralPath "$build/_deps/harfbuzz-src/COPYING" -Destination "$licenses/HarfBuzz.txt"
+Copy-Item -LiteralPath "$build/_deps/sheenbidi-src/LICENSE" -Destination "$licenses/SheenBidi.txt"
 Copy-Item -LiteralPath "$repo/assets/fonts/Inter-LICENSE.txt" -Destination "$licenses/Inter.txt"
 # The header carries miniaudio's full license text and version information.
 Copy-Item -LiteralPath "$repo/third_party/miniaudio/miniaudio.h" -Destination "$licenses/miniaudio.h"
@@ -36,7 +38,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve package commit.' }
     built_at_utc = [DateTime]::UtcNow.ToString('o')
     platform = 'windows-x64'
     ffmpeg = $lock
-    dependencies = @{ imgui = '1.92.9b'; freetype = '2.13.3'; glfw = '3.4'; miniaudio = '0.11.23'; inter = '4.1' }
+    dependencies = @{ imgui = '1.92.9b'; freetype = '2.13.3'; glfw = '3.4'; harfbuzz = '14.6.0'; sheenbidi = '2.9.0'; miniaudio = '0.11.23'; inter = '4.1' }
 } | ConvertTo-Json -Depth 5 | Set-Content "$package/BUILD.json"
 # A source snapshot accompanies binaries; fetched dependencies remain upstream.
 $source = Join-Path $dist 'Silta-source.zip'
