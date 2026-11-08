@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(Silta VERSION 0.1.0 LANGUAGES C CXX)
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -104,4 +105,11 @@ endif()
 
 if(SILTA_EDITOR AND SILTA_APP)
   add_subdirectory(examples/editor)
+endif()
+
+if(BUILD_TESTING)
+  add_executable(silta_core_test tests/core.cpp)
+  target_link_libraries(silta_core_test PRIVATE Silta::silta)
+  add_test(NAME silta.core COMMAND silta_core_test)
+  set_tests_properties(silta.core PROPERTIES TIMEOUT 30)
 endif()

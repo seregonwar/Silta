@@ -1,133 +1,224 @@
 # Silta
 
-A native C++ design system with the look and API of [shadcn/ui](https://ui.shadcn.com),
-built on Dear ImGui with interchangeable renderer backends.
+[![Verify](https://github.com/seregonwar/Silta/actions/workflows/verify.yml/badge.svg)](https://github.com/seregonwar/Silta/actions/workflows/verify.yml)
+[![Nightly](https://github.com/seregonwar/Silta/actions/workflows/nightly.yml/badge.svg)](https://github.com/seregonwar/Silta/actions/workflows/nightly.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-- **shadcn tokens, exactly**: `background`, `primary`, `muted`, `ring`, `radius`…
-  defined in OKLCH like Tailwind v4 and converted at startup. All five base colors
-  (neutral, zinc, slate, stone, gray), light and dark.
-- **CSS semantics**: Tailwind's type scale and line heights, `box-shadow`,
-  inside borders, focus rings (`ring-[3px] ring-ring/50`), `opacity-50` when disabled,
-  150 ms `cubic-bezier(0.4, 0, 0.2, 1)` transitions.
-- **Flex layout** for immediate mode: `Row`/`Column` with gap, padding, align,
-  justify, `fill` (w-full / flex-1) and Tailwind breakpoints.
-- **Renderer agnostic**: components draw only through `ImDrawList`, so they look the
-  same on every backend. The app shell ships Direct3D 11 and Vulkan, switchable at
-  runtime.
-- **Renders on demand**: no frames while nothing moves (input, animations and layout
-  changes wake it up).
+**A native C++20 design system inspired by shadcn/ui, built on Dear ImGui.**
 
-Dear ImGui is the infrastructure (input, IDs, draw lists, backends). Silta does not
-use ImGui's own widgets, except `InputText` for text editing inside `Input`.
+Silta brings consistent typography, theme tokens, flexible layouts and reusable
+components to native applications. Its components draw through `ImDrawList`;
+applications can use the supplied windowing shell or integrate Silta into an
+existing render loop.
 
-## Example
+![Silta Gallery in dark mode](docs/screenshots/gallery-dark-vulkan.png)
+
+## Features
+
+- **Token-based theming.** Light and dark themes across neutral, zinc, slate,
+  stone and gray palettes. OKLCH colors, semantic tokens and configurable accents.
+- **Flexible layout.** Rows and columns with spacing, padding, alignment,
+  justification, flexible sizing and responsive breakpoints.
+- **Consistent presentation.** Inter typography, rounded borders, shadows,
+  focus rings and animated state transitions.
+- **Native application shell.** GLFW windows, Direct3D 11 and Vulkan backends,
+  runtime renderer switching, file dialogs, drag-and-drop and PNG screenshots.
+- **Rendering on demand.** The shell waits for input when no animation or
+  scheduled update requires another frame.
+- **Application examples.** A component gallery, a minimal form and Silta Cut,
+  a multitrack video editing example with audio/video playback and MP4 export.
+
+## Getting started
+
+### Requirements
+
+- CMake 3.24 or newer.
+- A C++20 compiler. The Windows build uses Visual Studio 2022 with the Desktop
+  development with C++ workload and Windows SDK.
+- Git and network access for the first configuration. Dear ImGui 1.92.9b,
+  FreeType 2.13.3 and GLFW 3.4 are fetched at pinned versions.
+- The Vulkan SDK when building the Vulkan backend. Direct3D 11 requires no
+  additional graphics SDK beyond the Windows SDK.
+
+### Build the Windows examples
+
+```powershell
+git clone https://github.com/seregonwar/Silta.git
+cd Silta
+cmake -S . -B build/win -G "Visual Studio 17 2022" -A x64 -DSILTA_RENDERER_VULKAN=OFF
+cmake --build build/win --config Release --parallel 2
+./build/win/examples/gallery/Release/silta_gallery.exe
+```
+
+Fonts are copied beside the example executables. To enable Vulkan, install its
+SDK and configure with `-DSILTA_RENDERER_VULKAN=ON`.
+
+### Use Silta in an application
+
+Add the repository as a CMake subdirectory and link the application shell:
+
+```cmake
+set(SILTA_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(external/Silta)
+target_link_libraries(my_app PRIVATE Silta::app)
+```
 
 ```cpp
 #include "silta/app.hpp"
 #include "silta/silta.hpp"
-using namespace silta;
+#include <string>
 
 int main() {
-  App app({.title = "Hello"});
-  std::string name;
-  return app.run([&] {
-    auto page = Column({.gap = 16, .padding = Edges::all(32)});
-    if (auto card = Card({.width = 350})) {
-      { auto h = CardHeader();
-        CardTitle("Create project");
-        CardDescription("Deploy your new project in one-click."); }
-      { auto c = CardContent();
-        Input("name", &name, {.placeholder = "Name of your project"}); }
-      { auto f = CardFooter({.justify = Justify::between});
-        Button("Cancel", {.variant = Variant::outline});
-        if (Button("Deploy")) { /* ... */ } }
-    }
-  });
+    silta::App app({.title = "My application"});
+    if (!app.ok()) return 1;
+
+    std::string name;
+    return app.run([&] {
+        auto page = silta::Column({.gap = 16, .padding = silta::Edges::all(32)});
+        silta::Text("Create a project", {.size = silta::TextSize::xl,
+                                         .weight = silta::Weight::semibold});
+        silta::Input("name", &name, {.placeholder = "Project name", .width = 320});
+        if (silta::Button("Create project")) {
+            silta::toast("Project created", {.kind = silta::ToastKind::success});
+        }
+        silta::Toaster();
+    });
 }
 ```
 
-Apps that already own a renderer (a game engine, a video player) skip `silta::App`:
-they call `silta::init()` once and `silta::begin_frame()` / `end_frame()` inside
-their own ImGui frame.
+For an application with an existing window and renderer, link `Silta::silta`,
+call `silta::init()` after creating the ImGui context, and wrap UI work in
+`silta::begin_frame()` / `silta::end_frame()` inside the application's ImGui
+frame. Call `silta::shutdown()` before destroying the ImGui context. Components
+use Silta's drawing and styling; ImGui provides input, IDs, draw lists and text
+editing infrastructure.
 
 ## Components
 
-| Component | Options |
-|---|---|
-| `Button` | variants `primary`, `secondary`, `destructive`, `outline`, `ghost`, `link`; sizes `sm`, `md`, `lg`, `icon`; leading/trailing icon; `loading`; `disabled`; `width` |
-| `Badge` | `primary`, `secondary`, `destructive`, `outline`; icon |
-| `Card` | `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter` |
-| `Switch` | label (clickable), `disabled` |
-| `Input` | `placeholder`, `password`, `disabled`, `width`; `char*` or `std::string` |
-| `Separator` | horizontal or vertical |
-| `Text`, `Label` | Tailwind sizes `xs`…`4xl`, weights, muted, wrapping, `leading-*` |
-| `Checkbox`, `Slider` | labels, disabled; slider: drag, track click, arrows/Home/End, step |
-| `Tabs` | sliding active indicator, fit or equal width |
-| `Toggle`, `ToggleGroup` | default/outline, icons, joined groups with tooltips |
-| `Progress`, `Kbd` | animated value; key caps |
-| `Popover` | anchored to its trigger, side/align, flips at the viewport edge |
-| `DropdownMenu` | `MenuItem` (icon, shortcut, destructive, disabled), `MenuCheckbox`, `MenuLabel`, `MenuSeparator` |
-| `Select` | placeholder, checked item, keyboard navigation |
-| `Tooltip` | delay, arrow, shows on hover or keyboard focus |
-| `Dialog` | modal, title/description, close button, Escape/outside click, `DialogFooter` |
-| `toast` + `Toaster` | Sonner-style stack, success/info/warning/error, auto-dismiss |
-| `ScrollArea`, `Split` | clipped scrolling region; resizable panes with a draggable divider |
-| `Texture`, `Image` | GPU textures from CPU pixels on any backend (per-frame updates for video), contain/cover |
-| Icons | ~50 Lucide-style vector icons, including media transport and editing tools |
+| Area | Components |
+| --- | --- |
+| Actions | Button, Toggle, ToggleGroup |
+| Forms | Input, Checkbox, Switch, Slider, Select |
+| Content | Text, Label, Badge, Card, Separator, Kbd |
+| Navigation | Tabs, DropdownMenu |
+| Overlays | Dialog, Popover, Tooltip |
+| Feedback | Progress, toast / Toaster |
+| Layout | Row, Column, Spacer, ScrollArea, Split |
+| Media | Texture, Image, vector icons |
 
-Overlays open with shadcn's enter animation (fade + zoom from 95%). The app shell
-also offers native file dialogs (`open_file_dialog`, `save_file_dialog`) and files
-dropped on the window (`App::take_dropped_files`).
+Headers in [`include/silta`](include/silta) expose component options. The
+[Gallery](examples/gallery) demonstrates variants, sizes, themes, overlays and
+renderer switching.
 
-## Build
+## Silta Cut
 
-Requirements: CMake 3.24+, a C++20 compiler; the Vulkan SDK for the Vulkan backend.
-Dependencies (Dear ImGui 1.92.9b, FreeType 2.13.3, GLFW 3.4) are fetched and pinned
-by CMake.
+[Silta Cut](examples/editor) demonstrates a more complete application: two video
+and two audio tracks, background thumbnails and waveforms, playback, trimming,
+splitting, clip movement, undo/redo, volume, opacity and MP4 export.
 
-```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release --target silta_gallery
-build/examples/gallery/Release/silta_gallery.exe
+It requires the FFmpeg shared development distribution under
+`third_party/ffmpeg`, including headers, import libraries and runtime DLLs.
+The exact distribution used by CI is recorded in
+[the dependency manifest](.github/dependencies/ffmpeg.json).
+miniaudio 0.11.23 is fetched and verified automatically during configuration.
+
+```powershell
+# In a clean checkout, download the same verified FFmpeg distribution as CI:
+./.github/scripts/setup-ffmpeg.ps1
+cmake -S . -B build/win -DSILTA_EDITOR=ON -DSILTA_RENDERER_VULKAN=OFF
+cmake --build build/win --config Release --parallel 2
+./build/win/examples/editor/Release/silta_cut.exe
 ```
 
-CMake options: `SILTA_FREETYPE` (on), `SILTA_APP` (on), `SILTA_RENDERER_D3D11`
-(on for Windows), `SILTA_RENDERER_VULKAN` (on), `SILTA_EXAMPLES`.
+See the [editor guide](examples/editor/README.md) for shortcuts, scripted testing
+and current limitations. Projects are currently held in memory; project
+save/load is not implemented.
 
-## Silta Cut video editor
+## Build options
 
-`examples/editor` is a native multitrack editing example with preview/audio
-playback, trimming, splitting, undo/redo, thumbnails/waveforms and MP4 export.
-Enable `-DSILTA_EDITOR=ON` with FFmpeg in `third_party/ffmpeg`, then build
-`silta_cut`. See [build instructions and scripted tests](examples/editor/README.md).
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `SILTA_FREETYPE` | `ON` | Use FreeType to rasterize text |
+| `SILTA_APP` | `ON` | Build the window and renderer shell |
+| `SILTA_EXAMPLES` | `ON` for a top-level build | Build Gallery and Hello |
+| `SILTA_EDITOR` | `OFF` | Build Silta Cut and its test executables |
+| `SILTA_RENDERER_D3D11` | `ON` on Windows | Compile the Direct3D 11 backend |
+| `SILTA_RENDERER_VULKAN` | `ON` | Compile Vulkan when its SDK is found |
+| `BUILD_TESTING` | `ON` | Build and register renderer-free core tests |
 
-## Gallery
+The renderer-free library can be built separately, including on Linux and macOS:
 
-`examples/gallery` shows every component in every variant, with live theme, base
-color and renderer switching. Options:
-
-| Option | Effect |
-|---|---|
-| `--backend=d3d11` / `--backend=vulkan` | renderer to start with |
-| `--dark`, `--base=zinc` (…) | initial theme |
-| `--switch-to=vulkan` | swap the renderer at frame 3 (tests runtime switching) |
-| `--hidden` | never show the window |
-| `--script="click:978,56;type:hi;key:tab;wait:10;shot:out.png;quit"` | play input (points from the window's top-left) and save GPU read-back screenshots |
-
-`SILTA_TRACE=<file>` logs why each frame was rendered.
-
-## Layout
-
-```
-include/silta/   public API (theme, layout, anim, text, draw, icons, components, app)
-src/             core and components (renderer agnostic)
-src/app/         window + renderer backends (GLFW, D3D11, Vulkan), PNG screenshots
-examples/        gallery
-assets/fonts/    Inter 4.1 (SIL Open Font License, see Inter-LICENSE.txt)
+```sh
+cmake -S . -B build/core -DSILTA_APP=OFF -DSILTA_EXAMPLES=OFF -DBUILD_TESTING=ON
+cmake --build build/core --config Release --parallel 2
+ctest --test-dir build/core -C Release --output-on-failure
 ```
 
-## Status
+## Verification and nightly builds
 
-Version 0.1, Windows-tested (D3D11 and Vulkan). Not done yet: Metal and other
-platforms' shells (and their file dialogs), overlay exit animations,
-accessibility, a Rust binding over a C ABI.
+[Verify](.github/workflows/verify.yml) runs on **every push**, pull request and
+manual dispatch. It validates the workflow files, builds and tests the core on
+Windows, Linux and macOS, covers text rendering with and without FreeType, and
+builds the Windows applications. Windows checks exercise Gallery screenshots,
+media decoding, editing operations, playback, compositing, MP4 export and export
+cancellation. Logs, screenshots and verified packages are retained as artifacts.
+
+[Nightly](.github/workflows/nightly.yml) runs daily at **02:17 UTC** and can also
+be started manually on the default branch. It reruns the same verification
+before publishing a Windows x64 prerelease. Each snapshot has a dated,
+commit-specific tag and includes application binaries, fonts, runtime DLLs,
+third-party notices, a source archive and SHA-256 checksums. Existing snapshots
+are preserved. Nightlies use Direct3D 11 and are intended for evaluation.
+
+Download snapshots from [Releases](https://github.com/seregonwar/Silta/releases).
+Extract the archive before launching an executable. Nightly publication starts
+after the workflows are committed to the default branch and GitHub Actions is
+enabled for the repository.
+
+To run the editor checks locally after building the test executables:
+
+```powershell
+./examples/editor/smoke.ps1 -BuildDirectory build/win
+```
+
+The Gallery also accepts `--hidden`, `--dark`, `--base=zinc`,
+`--backend=d3d11|vulkan`, `--switch-to=vulkan|d3d11`, and an input script:
+
+```powershell
+./build/win/examples/gallery/Release/silta_gallery.exe --hidden --script="sleep:300;shot:gallery.png;quit"
+```
+
+Set `SILTA_TRACE` to a file path to record render-loop diagnostics.
+
+## Project structure
+
+```text
+include/silta/     Public API and component headers
+src/              Themes, layout, drawing, animation and components
+src/app/          Windowing, native dialogs and renderer backends
+examples/hello/   Minimal application
+examples/gallery/ Component showcase
+examples/editor/  Silta Cut and media tests
+tests/            Renderer-free regression tests
+assets/fonts/     Inter fonts and their license
+docs/screenshots/ Gallery screenshots
+.github/          Verification, nightly builds and dependency manifest
+```
+
+## Status and contributing
+
+Silta is an early-stage project, currently version 0.1. The desktop application
+shell has been exercised on Windows with Direct3D 11 and Vulkan. Core library
+builds are checked separately on Linux and macOS; their native application shells
+and file dialogs are not complete. Metal, accessibility support, overlay exit
+animations and a C ABI/Rust binding remain future work.
+
+Bug reports and focused pull requests are welcome. Include the compiler,
+renderer, reproduction steps and relevant logs with a report. For a code change,
+run the core tests and the affected example before submitting it.
+
+## License
+
+Silta's original code is distributed under the [MIT License](LICENSE).
+Dependencies and fonts retain their own licenses; see
+[third-party notices](THIRD_PARTY.md).

@@ -1,0 +1,129 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
+
+jobs:
+  workflows:
+    name: Workflow validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.3'
+          cache: false
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - name: Validate workflows
+        run: actionlint -color
+
+  core:
+    name: Core (${{ matrix.os }}, FreeType ${{ matrix.freetype }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            freetype: 'ON'
+          - os: ubuntu-24.04
+            freetype: 'OFF'
+          - os: macos-14
+            freetype: 'ON'
+          - os: windows-2022
+            freetype: 'ON'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/core/_deps/imgui-src
+            build/core/_deps/freetype-src
+          key: core-deps-${{ runner.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Configure renderer-free library
+        run: cmake -S . -B build/core -DSILTA_APP=OFF -DSILTA_EXAMPLES=OFF -DSILTA_EDITOR=OFF -DSILTA_FREETYPE=${{ matrix.freetype }} -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/core --config Release --parallel 2
+      - name: Run core tests
+        run: ctest --test-dir build/core -C Release --output-on-failure --no-tests=error
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-logs-${{ matrix.os }}-freetype-${{ matrix.freetype }}
+          path: build/core/Testing/Temporary/
+          retention-days: 7
+
+  windows:
+    name: Windows applications and editor
+    runs-on: windows-2022
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-windows-x64-${{ hashFiles('.github/dependencies/ffmpeg.json') }}
+      - name: Prepare verified FFmpeg distribution
+        run: ./.github/scripts/setup-ffmpeg.ps1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ci/_deps/imgui-src
+            build/ci/_deps/freetype-src
+            build/ci/_deps/glfw-src
+            third_party/miniaudio
+          key: desktop-deps-${{ runner.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'examples/editor/CMakeLists.txt') }}
+      - name: Configure applications
+        run: cmake -S . -B build/ci -G "Visual Studio 17 2022" -A x64 -DSILTA_EDITOR=ON -DSILTA_RENDERER_VULKAN=OFF -DBUILD_TESTING=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+      - name: Build all applications and tests
+        run: cmake --build build/ci --config Release --parallel 2 -- /nr:false
+      - name: Run core tests
+        run: ctest --test-dir build/ci -C Release --output-on-failure --no-tests=error
+      - name: Exercise gallery in light and dark modes
+        run: ./.github/scripts/gallery-smoke.ps1
+      - name: Exercise editor, media and export
+        run: ./examples/editor/smoke.ps1 -BuildDirectory build/ci
+      - name: Package verified applications
+        run: ./.github/scripts/package-windows.ps1
+      - name: Upload verified binaries and sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            build/packages/*.zip
+            build/packages/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: |
+            build/ci/gallery-test/
+            build/ci/Testing/Temporary/
+            build/editor-test/
+          retention-days: 7

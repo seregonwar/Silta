@@ -1,0 +1,71 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref_name == github.event.repository.default_branch
+    uses: ./.github/workflows/verify.yml
+
+  publish:
+    name: Publish verified nightly
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-packages
+          path: release-assets
+      - name: Verify package checksums
+        working-directory: release-assets
+        run: sha256sum --check SHA256SUMS.txt
+      - name: Create immutable prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          date_utc="$(date -u +%Y%m%d)"
+          short_sha="${GITHUB_SHA:0:12}"
+          tag="nightly-${date_utc}-${short_sha}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            published_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
+            test "$published_sha" = "$GITHUB_SHA"
+            mkdir published
+            gh release download "$tag" --dir published
+            (cd published && sha256sum --check SHA256SUMS.txt)
+            echo "Verified existing nightly: $tag" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat > release-notes.md <<EOF
+          Automated preview build of Silta. This is not a stable release.
+
+          - Commit: ${GITHUB_SHA}
+          - Verification: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Platform: Windows x64 (Direct3D 11)
+          - Includes Gallery, Hello and Silta Cut, fonts, runtime DLLs and third-party notices.
+          - Source snapshot and SHA-256 checksums are attached.
+
+          Extract the ZIP before running an executable. Projects in Silta Cut are held in memory.
+          EOF
+          gh release create "$tag" release-assets/* \
+            --target "$GITHUB_SHA" \
+            --title "Silta nightly ${date_utc} (${short_sha})" \
+            --notes-file release-notes.md --prerelease --latest=false
+          echo "Published $tag" >> "$GITHUB_STEP_SUMMARY"
