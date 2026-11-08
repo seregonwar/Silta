@@ -94,6 +94,13 @@ build/examples/gallery/Release/silta_gallery.exe
 CMake options: `SILTA_FREETYPE` (on), `SILTA_APP` (on), `SILTA_RENDERER_D3D11`
 (on for Windows), `SILTA_RENDERER_VULKAN` (on), `SILTA_EXAMPLES`.
 
+## Silta Cut video editor
+
+`examples/editor` is a native multitrack editing example with preview/audio
+playback, trimming, splitting, undo/redo, thumbnails/waveforms and MP4 export.
+Enable `-DSILTA_EDITOR=ON` with FFmpeg in `third_party/ffmpeg`, then build
+`silta_cut`. See [build instructions and scripted tests](examples/editor/README.md).
+
 ## Gallery
 
 `examples/gallery` shows every component in every variant, with live theme, base

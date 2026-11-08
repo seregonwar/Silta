@@ -15,6 +15,7 @@ extern GLFWwindow *main_window;
 #endif
 #include <windows.h>
 #include <shobjidl.h>
+#include <cstdio>
 
 namespace silta {
 namespace {
@@ -36,10 +37,14 @@ HWND parent() { return detail::main_window ? glfwGetWin32Window(detail::main_win
 
 // COM is initialized for the dialog's duration (apartment-threaded).
 struct Com {
-  bool owned;
-  Com() : owned(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))) {}
+  HRESULT result;
+  Com() : result(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)) {
+    if (FAILED(result))
+      std::fprintf(stderr, "silta: file dialogs require a UI thread initialized as STA (HRESULT 0x%08lx)\n",
+                   static_cast<unsigned long>(result));
+  }
   ~Com() {
-    if (owned) CoUninitialize();
+    if (SUCCEEDED(result)) CoUninitialize();
   }
 };
 
@@ -56,6 +61,7 @@ void apply_filters(IFileDialog *dialog, std::span<const FileFilter> filters, std
 std::vector<std::string> open_file_dialog(std::span<const FileFilter> filters, bool multiple, const char *title) {
   std::vector<std::string> result;
   Com com;
+  if (FAILED(com.result)) return result;
   IFileOpenDialog *dialog = nullptr;
   if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&dialog)))) return result;
   std::vector<std::wstring> storage;
@@ -91,6 +97,7 @@ std::optional<std::string> save_file_dialog(std::span<const FileFilter> filters,
                                             const char *title) {
   std::optional<std::string> result;
   Com com;
+  if (FAILED(com.result)) return result;
   IFileSaveDialog *dialog = nullptr;
   if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&dialog)))) return result;
   std::vector<std::wstring> storage;
