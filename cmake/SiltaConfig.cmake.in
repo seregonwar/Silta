@@ -9,6 +9,20 @@ include(CMakeFindDependencyMacro)
 set(Silta_IMGUI_TARGET "@SILTA_IMGUI_TARGET@")
 set(Silta_HAS_APP @SILTA_APP@)
 set(Silta_FREETYPE @SILTA_VENDORED_FREETYPE@)
+# MSVC: Silta's static libraries were built with this runtime. Projects must
+# use the same one (CMAKE_MSVC_RUNTIME_LIBRARY), or linking fails (LNK2038).
+set(Silta_MSVC_RUNTIME_LIBRARY "@SILTA_MSVC_RUNTIME@")
+if(MSVC)
+  set(_silta_runtime "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+  if(NOT _silta_runtime)
+    set(_silta_runtime "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+  endif()
+  if(NOT _silta_runtime STREQUAL Silta_MSVC_RUNTIME_LIBRARY)
+    message(WARNING "Silta was built with CMAKE_MSVC_RUNTIME_LIBRARY=\"${Silta_MSVC_RUNTIME_LIBRARY}\" "
+                    "but this project uses \"${_silta_runtime}\". Set the same value before "
+                    "find_package(Silta) to avoid LNK2038 runtime mismatch errors.")
+  endif()
+endif()
 
 if(Silta_IMGUI_TARGET AND NOT TARGET ${Silta_IMGUI_TARGET})
   message(FATAL_ERROR "Silta was built against the ImGui target ${Silta_IMGUI_TARGET}; "

@@ -176,6 +176,10 @@ if(SILTA_INSTALL)
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/silta/imgui/misc/freetype)
   endif()
   install(EXPORT SiltaTargets NAMESPACE Silta:: DESTINATION ${_silta_cmake_dir})
+  set(SILTA_MSVC_RUNTIME "${CMAKE_MSVC_RUNTIME_LIBRARY}")
+  if(NOT SILTA_MSVC_RUNTIME)
+    set(SILTA_MSVC_RUNTIME "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL") # CMake's default
+  endif()
   configure_package_config_file(cmake/SiltaConfig.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/SiltaConfig.cmake INSTALL_DESTINATION ${_silta_cmake_dir})
   # Before 1.0 a minor release may break the API: only the same minor matches.
@@ -211,6 +215,7 @@ if(BUILD_TESTING)
         -DCONFIG=$<CONFIG>
         -DGENERATOR=${CMAKE_GENERATOR}
         -DPLATFORM=${CMAKE_GENERATOR_PLATFORM}
+        "-DMSVC_RUNTIME=${CMAKE_MSVC_RUNTIME_LIBRARY}"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/package/run.cmake)
     set_tests_properties(silta.package PROPERTIES TIMEOUT 600)
   endif()
@@ -224,6 +229,7 @@ if(BUILD_TESTING)
         -DCONFIG=$<CONFIG>
         -DGENERATOR=${CMAKE_GENERATOR}
         -DPLATFORM=${CMAKE_GENERATOR_PLATFORM}
+        "-DMSVC_RUNTIME=${CMAKE_MSVC_RUNTIME_LIBRARY}"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/byo_imgui/run.cmake)
     set_tests_properties(silta.byo-imgui PROPERTIES TIMEOUT 600)
   endif()

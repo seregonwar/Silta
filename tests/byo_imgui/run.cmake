@@ -14,6 +14,10 @@ set(platform_args "")
 if(PLATFORM)
   set(platform_args -A ${PLATFORM})
 endif()
+# Same MSVC runtime as the Silta build (static or DLL), or the link fails.
+if(MSVC_RUNTIME)
+  list(APPEND platform_args "-DCMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_RUNTIME}")
+endif()
 run(${CMAKE_COMMAND} -S "${SILTA_SOURCE}/tests/byo_imgui" -B "${WORK_DIR}" -G "${GENERATOR}" ${platform_args}
     "-DSILTA_SOURCE=${SILTA_SOURCE}" "-DIMGUI_DIR=${IMGUI_DIR}" "-DCMAKE_BUILD_TYPE=${CONFIG}")
 run(${CMAKE_COMMAND} --build "${WORK_DIR}" --config ${CONFIG} --target host)
