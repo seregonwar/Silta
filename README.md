@@ -114,7 +114,7 @@ show the details.
 | Area | Components |
 | --- | --- |
 | Actions | Button, Toggle, ToggleGroup |
-| Forms | Input, Checkbox, Switch, Slider, Select |
+| Forms | Input, Textarea, Checkbox, Switch, Slider, Select |
 | Content | Text, Label, Badge, Card, Separator, Kbd |
 | Navigation | Tabs, DropdownMenu |
 | Overlays | Dialog, Popover, Tooltip |

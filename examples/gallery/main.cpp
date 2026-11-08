@@ -32,6 +32,7 @@ struct State {
   bool bold = false, italic = true;
   float progress = 0.25f;
   std::string profile_name = "Pedro Duarte", profile_user = "@peduarte";
+  std::string message;
   float scroll = 0; // --scroll=N (points), for screenshots
   Backend switch_to = Backend::automatic; // --switch-to=..., tests runtime switching
   bool hidden = false;                     // --hidden
@@ -78,6 +79,8 @@ void run_script(State &s, App &app) {
     s.wait = std::stoi(arg);
   } else if (verb == "sleep") { // real time, so animations can finish
     s.sleep_until = ImGui::GetTime() + std::stof(arg) / 1000.0;
+  } else if (verb == "scroll") { // points from the top, once the page is laid out
+    ImGui::SetScrollY(std::stof(arg) * scale());
   } else if (verb == "shot") {
     app.screenshot(arg.c_str());
   } else if (verb == "quit") {
@@ -105,7 +108,7 @@ void header(State &s, App &app) {
   {
     auto brand = Row({.gap = 10, .align = Align::center});
     Text("Silta", {.size = TextSize::xl2, .weight = Weight::semibold, .line_height = 32});
-    Badge("v0.1", {.variant = Variant::secondary});
+    Badge((std::string("v") + version()).c_str(), {.variant = Variant::secondary});
   }
   {
     auto tools = Row({.gap = 8, .align = Align::center});
@@ -171,6 +174,7 @@ void inputs(State &s) {
   Input("email", &s.email, {.placeholder = "Email"});
   Input("password", &s.password, {.placeholder = "Password", .password = true});
   Input("disabled", &s.framework, {.disabled = true});
+  Textarea("message", &s.message, {.placeholder = "Type your message here."});
 }
 
 void cards(State &s) {
@@ -375,6 +379,32 @@ void controls(State &s) {
   }
 }
 
+void languages() {
+  auto section = Section("Languages", "Fallback fonts from the system cover the scripts Inter lacks.");
+  struct Sample {
+    const char *name, *text;
+    bool shaped; // renders correctly without text shaping
+  };
+  static const Sample samples[] = {
+      {"English", "The quick brown fox jumps over the lazy dog", true},
+      {"Ελληνικά", "Γειά σου κόσμε", true},
+      {"Русский", "Съешь же ещё этих мягких французских булок", true},
+      {"中文", "你好，世界。设计系统让界面保持一致。", true},
+      {"日本語", "こんにちは世界。デザインシステム。", true},
+      {"한국어", "안녕하세요 세계. 디자인 시스템.", true},
+      {"Emoji", "🎬 🎧 ✨ 👍 🚀", true},
+      {"हिन्दी", "नमस्ते दुनिया", false},
+      {"ไทย", "สวัสดีชาวโลก", false},
+      {"العربية", "مرحبا بالعالم", false},
+  };
+  for (const Sample &sample : samples) {
+    auto row = Row({.gap = 16, .align = Align::center});
+    { auto name = Column({.width = 96}); Text(sample.name, {.weight = Weight::medium}); }
+    Text(sample.text, {.size = TextSize::lg});
+    if (!sample.shaped) Badge("needs shaping (0.3)", {.variant = Variant::outline});
+  }
+}
+
 void icons() {
   auto section = Section("Icons", "Lucide-style vector icons, crisp at any scale.");
   static const Icon all[] = {Icon::check, Icon::x, Icon::plus, Icon::minus, Icon::chevron_down,
@@ -478,6 +508,7 @@ int main(int argc, char **argv) {
     overlays(s);
     controls(s);
     panels();
+    languages();
     icons();
     Separator();
     char status[128];

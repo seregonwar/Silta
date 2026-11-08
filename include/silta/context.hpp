@@ -12,6 +12,7 @@
 // with Silta's theme, the host's ImGui widgets keep the host's style (unless
 // InitOptions::style_imgui asks Silta to theme them as well).
 #include <cstddef>
+#include <vector>
 #include "silta/theme.hpp"
 
 namespace silta {
@@ -22,6 +23,7 @@ struct FontSource {
   const char *path = nullptr;
   const void *data = nullptr;
   std::size_t size = 0;
+  int index = 0; // face index in a font collection (.ttc)
   bool empty() const { return !path && !data; }
 };
 
@@ -34,6 +36,11 @@ struct InitOptions {
   // "fonts" folder, then the folder Silta was built with).
   FontSource regular, medium, semibold;
   const char *font_dir = nullptr;
+  // Characters Inter lacks (CJK, Indic scripts, symbols, emoji) come from
+  // fallback fonts: `fallback` first, then the platform's system fonts
+  // (ordered for the user's language) unless system_fallback is false.
+  std::vector<FontSource> fallback;
+  bool system_fallback = true;
   // Also theme ImGui's own widgets and windows, and make Silta's font ImGui's
   // default. Off for hosts with their own ImGui look; silta::App turns it on.
   bool style_imgui = false;
@@ -46,6 +53,8 @@ struct Fonts {
   // ImGui sizes a font by ascender - descender; CSS sizes it by the em box.
   // font_size_px * em_to_imgui is the ImGui size that matches CSS font-size.
   float em_to_imgui = 1.f;
+  // Fallback fonts merged behind Inter (0 when none were found).
+  int fallback_count = 0;
 };
 
 // Call after ImGui::CreateContext() and before the first frame. Returns false

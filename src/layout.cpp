@@ -68,8 +68,11 @@ ImVec2 next_position(const Live &f, ImVec2 size) {
                    : ImVec2(snap(f.origin.x + cross), snap(f.origin.y + main));
 }
 
-void advance(Live &f, ImVec2 size, bool grow) {
-  const float m = main_of(f, size), c = cross_of(f, size);
+// `natural_cross`: the child's size on the cross axis before stretching (its
+// content). The container measures its own cross size from natural sizes, as
+// CSS does, so stretched children can make it grow and shrink.
+void advance(Live &f, ImVec2 size, bool grow, float natural_cross = -1) {
+  const float m = main_of(f, size), c = natural_cross >= 0 ? natural_cross : cross_of(f, size);
   if (f.child_count > 0) f.content_main += f.gap;
   f.content_main += m;
   f.content_cross = std::max(f.content_cross, c);
@@ -252,7 +255,14 @@ Flex::~Flex() {
     ImGui::SetCursorScreenPos(f.outer.Min);
     ImGui::ItemSize(size);
   } else {
-    advance(S().stack.back(), size, f.grow);
+    // A size given in points is natural; a stretched or filled side reports
+    // its content instead.
+    const Live &parent = S().stack.back();
+    const bool cross_is_x = !is_row(parent);
+    const float option = cross_is_x ? f.options.width : f.options.height;
+    const float natural = option > 0 ? (cross_is_x ? size.x : size.y)
+                                     : snap(cross_is_x ? content_w + pad_x : content_h + pad_y);
+    advance(S().stack.back(), size, f.grow, natural);
   }
 }
 

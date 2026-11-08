@@ -29,6 +29,7 @@ add_library(silta
   src/color.cpp
   src/theme.cpp
   src/per_context.cpp
+  src/fonts.cpp
   src/context.cpp
   src/anim.cpp
   src/layout.cpp

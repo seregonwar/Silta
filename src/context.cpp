@@ -2,6 +2,7 @@
 #include "silta/anim.hpp"
 #include "silta/layout.hpp"
 #include "silta/texture.hpp"
+#include "fonts.hpp"
 #include "per_context.hpp"
 #include "imgui.h"
 #ifdef IMGUI_ENABLE_FREETYPE
@@ -40,7 +41,7 @@ struct State {
   int pending_frames = 2;
   bool style_imgui = false;
   double wake_at = -1;           // ImGui time of the earliest requested wake-up
-  std::vector<std::vector<unsigned char>> font_data; // file fonts, owned here
+  std::vector<std::unique_ptr<detail::MappedFile>> font_files; // mapped font files
 };
 State &S() { return detail::per_context<State>(); }
 
@@ -84,7 +85,6 @@ float em_ratio(const unsigned char *d, std::size_t size) {
   return upm > 0 && asc - desc > 0 ? float(asc - desc) / float(upm) : 1.f;
 }
 
-// Font bytes from a file (kept alive in the state) or from memory.
 std::filesystem::path from_u8(const char *s) {
   return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t *>(s)));
 }
@@ -93,28 +93,60 @@ struct Bytes {
   const unsigned char *data = nullptr;
   std::size_t size = 0;
 };
-Bytes read_source(const FontSource &src) {
-  if (src.data) return {static_cast<const unsigned char *>(src.data), src.size};
-  if (!src.path) return {};
-  std::ifstream in(from_u8(src.path), std::ios::binary);
-  if (!in) return {};
-  std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  if (bytes.empty()) return {};
-  auto &kept = S().font_data.emplace_back(std::move(bytes));
-  return {kept.data(), kept.size()};
+// Font bytes from memory, or from a file mapped for the context's lifetime.
+Bytes read_source(const char *path, const void *data, std::size_t size) {
+  if (data) return {static_cast<const unsigned char *>(data), size};
+  if (!path) return {};
+  auto file = detail::MappedFile::open(path);
+  if (!file) return {};
+  const Bytes bytes{file->data(), file->size()};
+  S().font_files.push_back(std::move(file));
+  return bytes;
 }
+Bytes read_source(const FontSource &src) { return read_source(src.path, src.data, src.size); }
 
-ImFont *add_font(Bytes bytes, const char *name) {
+// A face in the atlas; with `merge`, it adds the glyphs the previous font
+// lacks (ImGui looks glyphs up source by source, in order).
+ImFont *add_font(Bytes bytes, const char *name, int index = 0, bool merge = false, bool color = false) {
   if (!bytes.data) return nullptr;
   ImFontConfig cfg;
 #ifdef IMGUI_ENABLE_FREETYPE
   cfg.FontLoaderFlags = ImGuiFreeTypeLoaderFlags_LightHinting;
+  if (color) cfg.FontLoaderFlags |= ImGuiFreeTypeLoaderFlags_LoadColor;
+#else
+  (void)color;
 #endif
   cfg.PixelSnapH = true;
+  cfg.MergeMode = merge;
+  cfg.FontNo = index;
   cfg.FontDataOwnedByAtlas = false; // Silta (or the caller) owns the bytes
   std::snprintf(cfg.Name, sizeof cfg.Name, "%s", name);
   return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(bytes.data), int(bytes.size), 0.f,
                                                      &cfg);
+}
+
+struct Fallback {
+  Bytes bytes;
+  int index = 0;
+  bool color = false;
+};
+
+// Explicit fallbacks first, then the system's.
+std::vector<Fallback> fallback_fonts(const InitOptions &o) {
+  std::vector<Fallback> out;
+  for (const FontSource &src : o.fallback)
+    if (Bytes b = read_source(src); b.data) out.push_back({b, src.index, false});
+  if (o.system_fallback)
+    for (const detail::SystemFont &f : detail::system_fallback_fonts())
+      if (Bytes b = read_source(f.path.c_str(), nullptr, 0); b.data) out.push_back({b, f.index, f.color});
+  return out;
+}
+
+ImFont *add_face(Bytes bytes, int index, const char *name, const std::vector<Fallback> &fallbacks) {
+  ImFont *font = add_font(bytes, name, index);
+  if (font)
+    for (const Fallback &f : fallbacks) add_font(f.bytes, "fallback", f.index, true, f.color);
+  return font;
 }
 
 bool load_fonts(const InitOptions &o) {
@@ -159,14 +191,17 @@ bool load_fonts(const InitOptions &o) {
 
   const Bytes r = read_source(regular);
   st.fonts = {};
-  st.fonts.regular = add_font(r, "Inter Regular");
-  if (!st.fonts.regular) {
+  if (!r.data) {
     std::fprintf(stderr, "silta: Inter fonts not found, falling back to ImGui's default font\n");
     st.fonts.em_to_imgui = 1.f;
     return false;
   }
-  st.fonts.medium = add_font(read_source(medium), "Inter Medium");
-  st.fonts.semibold = add_font(read_source(semibold), "Inter SemiBold");
+  // Each weight gets the same fallback chain; the files are mapped once.
+  const std::vector<Fallback> fallbacks = fallback_fonts(o);
+  st.fonts.fallback_count = int(fallbacks.size());
+  st.fonts.regular = add_face(r, regular.index, "Inter Regular", fallbacks);
+  st.fonts.medium = add_face(read_source(medium), medium.index, "Inter Medium", fallbacks);
+  st.fonts.semibold = add_face(read_source(semibold), semibold.index, "Inter SemiBold", fallbacks);
   if (!st.fonts.medium) st.fonts.medium = st.fonts.regular;
   if (!st.fonts.semibold) st.fonts.semibold = st.fonts.medium;
   st.fonts.em_to_imgui = em_ratio(r.data, r.size);

@@ -72,10 +72,11 @@ nothing and has no font fallback.
       size so immediate mode stays cheap.
 - [ ] **Bidirectional text (M).** Right-to-left and mixed runs (FriBidi or
       ICU's bidi), RTL layout direction for rows.
-- [ ] **Font fallback (M).** Per-codepoint fallback chain: Inter, then
-      system CJK/emoji fonts found per platform, colour emoji.
-- [ ] **Textarea (M).** Multi-line editing: wrapping, selection, undo,
-      clipboard, scrolling, placeholder, max length.
+- [x] **Font fallback (M).** Per-codepoint fallback chain: Inter, then
+      system fonts found per platform (CJK ordered for the user's language,
+      Indic, Thai, symbols), colour emoji; files memory-mapped.
+- [x] **Textarea (M).** Multi-line editing: wrapping, selection, undo,
+      clipboard, scrolling, placeholder; grows with its content.
 - [ ] **IME (S).** Verify and fix composition (Japanese, Chinese, Korean)
       in Input and Textarea on each platform shell; candidate window placed
       at the caret.

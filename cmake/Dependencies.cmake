@@ -81,7 +81,8 @@ else()
     $<BUILD_INTERFACE:${imgui_SOURCE_DIR}>
     $<BUILD_INTERFACE:${imgui_SOURCE_DIR}/backends>
     $<INSTALL_INTERFACE:include/silta/imgui>)
-  target_compile_definitions(silta_imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
+  # 32-bit characters: emoji and other symbols live beyond U+FFFF.
+  target_compile_definitions(silta_imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS IMGUI_USE_WCHAR32)
   if(SILTA_FREETYPE)
     target_sources(silta_imgui PRIVATE ${imgui_SOURCE_DIR}/misc/freetype/imgui_freetype.cpp)
     target_compile_definitions(silta_imgui PUBLIC IMGUI_ENABLE_FREETYPE)

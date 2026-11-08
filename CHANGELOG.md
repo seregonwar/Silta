@@ -3,6 +3,22 @@
 Silta follows semantic versioning; before 1.0, a minor release may change the
 API, and these notes say how to update.
 
+## Unreleased (0.3 in progress)
+
+### Added
+- Fallback fonts: characters Inter lacks come from system fonts (CJK in the
+  user's language order, Indic, Thai, symbols, colour emoji). Configurable
+  with `InitOptions::fallback` and `system_fallback`; font files are
+  memory-mapped instead of copied.
+- `Textarea`: multi-line field that wraps and grows with its content.
+- ImGui is built with 32-bit characters (`IMGUI_USE_WCHAR32`) so emoji and
+  other characters beyond U+FFFF render.
+- Gallery: a Languages section and a Textarea.
+
+### Fixed
+- A row of automatic height did not grow with its stretched children (the
+  default since 0.2), so long pages could not scroll to their end.
+
 ## 0.2.0: Embeddable
 
 Silta can be added to an application that already uses Dear ImGui without

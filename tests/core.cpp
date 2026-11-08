@@ -51,6 +51,11 @@ void ui_tests() {
   ImGui::GetPlatformIO().Renderer_TextureMaxWidth = 4096;
   ImGui::GetPlatformIO().Renderer_TextureMaxHeight = 4096;
   require(fonts().regular != nullptr, "bundled font loading");
+  // With system fallback fonts, CJK characters are covered (CI images without
+  // such fonts report no fallbacks and skip the check).
+  if (fonts().fallback_count > 0)
+    require(fonts().regular->IsGlyphInFont(0x65E5) || fonts().regular->IsGlyphInFont(0x0416),
+            "fallback fonts cover characters Inter lacks");
   for (int frame = 0; frame < 8; ++frame) {
     ImGui::NewFrame(); begin_frame();
     ImGui::SetNextWindowSize({800, 600}); ImGui::Begin("test");
@@ -75,6 +80,40 @@ void ui_tests() {
     }
   }
   shutdown(); ImGui::DestroyContext();
+}
+
+// A row of auto height measures its stretched children by their content
+// (a stretched column taller than the row makes the row grow, then shrink).
+void layout_tests() {
+  using namespace silta;
+  ImGuiContext *ctx = ImGui::CreateContext();
+  auto &io = ImGui::GetIO();
+  io.IniFilename = nullptr; io.DisplaySize = {800, 600}; io.DeltaTime = 1.f / 60;
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+  require(init({.system_fallback = false}), "layout test init");
+  float content = 120, measured = 0;
+  auto run = [&] {
+    for (int frame = 0; frame < 6; ++frame) {
+      ImGui::NewFrame(); begin_frame();
+      ImGui::SetNextWindowSize({600, 500}); ImGui::Begin("layout");
+      {
+        auto row = Row({.gap = 8});
+        { auto col = Column(); layout::allocate(ImVec2(50, content)); }
+        { auto col = Column(); layout::allocate(ImVec2(50, 20)); }
+        measured = row.rect().GetHeight();
+      }
+      ImGui::End(); end_frame(); ImGui::Render();
+      for (auto *t : ImGui::GetPlatformIO().Textures)
+        if (t->Status == ImTextureStatus_WantCreate || t->Status == ImTextureStatus_WantUpdates)
+          t->SetTexID(1), t->SetStatus(ImTextureStatus_OK);
+    }
+  };
+  run();
+  near(measured, content, "stretched children grow an auto-height row");
+  content = 40;
+  run();
+  near(measured, content, "and shrink it again");
+  ImGui::DestroyContext(ctx);
 }
 
 // One frame of Silta in the current context; also acknowledges the texture
@@ -143,6 +182,6 @@ void multi_context_tests() {
 }
 }
 int main() {
-  try { color_tests(); theme_tests(); ui_tests(); multi_context_tests(); std::cout << "Core tests passed\n"; return 0; }
+  try { color_tests(); theme_tests(); ui_tests(); layout_tests(); multi_context_tests(); std::cout << "Core tests passed\n"; return 0; }
   catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }
