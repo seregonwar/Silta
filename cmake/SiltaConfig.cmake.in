@@ -1,0 +1,28 @@
+@PACKAGE_INIT@
+# Silta CMake package.
+#
+#   find_package(Silta 0.2 CONFIG REQUIRED)
+#   target_link_libraries(app PRIVATE Silta::silta)   # design system
+#   target_link_libraries(app PRIVATE Silta::app)     # + window and renderers
+include(CMakeFindDependencyMacro)
+
+set(Silta_IMGUI_TARGET "@SILTA_IMGUI_TARGET@")
+set(Silta_HAS_APP @SILTA_APP@)
+set(Silta_FREETYPE @SILTA_VENDORED_FREETYPE@)
+
+if(Silta_IMGUI_TARGET AND NOT TARGET ${Silta_IMGUI_TARGET})
+  message(FATAL_ERROR "Silta was built against the ImGui target ${Silta_IMGUI_TARGET}; "
+                      "import it (e.g. find_package(imgui)) before find_package(Silta).")
+endif()
+if(Silta_FREETYPE)
+  find_dependency(freetype CONFIG)
+endif()
+if(Silta_HAS_APP)
+  find_dependency(glfw3 CONFIG)
+  if(@SILTA_APP_VULKAN@)
+    find_dependency(Vulkan)
+  endif()
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/SiltaTargets.cmake")
+check_required_components(Silta)

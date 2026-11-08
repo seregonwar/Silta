@@ -2,6 +2,7 @@
 #include "silta/anim.hpp"
 #include "silta/layout.hpp"
 #include "silta/texture.hpp"
+#include "per_context.hpp"
 #include "imgui.h"
 #ifdef IMGUI_ENABLE_FREETYPE
 #include "misc/freetype/imgui_freetype.h"
@@ -22,6 +23,14 @@
 #include <mach-o/dyld.h>
 #endif
 
+#ifdef SILTA_EMBED_FONTS
+// Generated at build time from assets/fonts (see cmake/EmbedFonts.cmake).
+namespace silta::detail {
+extern const unsigned char inter_regular[], inter_medium[], inter_semibold[];
+extern const std::size_t inter_regular_size, inter_medium_size, inter_semibold_size;
+} // namespace silta::detail
+#endif
+
 namespace silta {
 namespace {
 struct State {
@@ -29,10 +38,11 @@ struct State {
   float scale = 1.f;
   Fonts fonts;
   int pending_frames = 2;
-  bool initialized = false;
-  double wake_at = -1; // ImGui time of the earliest requested wake-up
+  bool style_imgui = false;
+  double wake_at = -1;           // ImGui time of the earliest requested wake-up
+  std::vector<std::vector<unsigned char>> font_data; // file fonts, owned here
 };
-State state;
+State &S() { return detail::per_context<State>(); }
 
 std::filesystem::path executable_dir() {
 #ifdef _WIN32
@@ -56,29 +66,133 @@ uint32_t be32(const unsigned char *p) { return (uint32_t(p[0]) << 24) | (uint32_
 
 // (hhea.ascender - hhea.descender) / head.unitsPerEm: how much larger ImGui's
 // size unit is than CSS's em for this font.
-float em_ratio(const std::filesystem::path &file) {
-  std::ifstream in(file, std::ios::binary);
-  std::vector<unsigned char> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  if (d.size() < 12) return 1.f;
+float em_ratio(const unsigned char *d, std::size_t size) {
+  if (!d || size < 12) return 1.f;
   const uint16_t tables = be16(&d[4]);
   int asc = 0, desc = 0, upm = 0;
   for (uint16_t i = 0; i < tables; ++i) {
     const size_t rec = 12 + size_t(i) * 16;
-    if (rec + 16 > d.size()) break;
+    if (rec + 16 > size) break;
     const uint32_t off = be32(&d[rec + 8]);
-    if (std::memcmp(&d[rec], "hhea", 4) == 0 && off + 8 <= d.size()) {
+    if (std::memcmp(&d[rec], "hhea", 4) == 0 && off + 8 <= size) {
       asc = int16_t(be16(&d[off + 4]));
       desc = int16_t(be16(&d[off + 6]));
-    } else if (std::memcmp(&d[rec], "head", 4) == 0 && off + 20 <= d.size()) {
+    } else if (std::memcmp(&d[rec], "head", 4) == 0 && off + 20 <= size) {
       upm = be16(&d[off + 18]);
     }
   }
   return upm > 0 && asc - desc > 0 ? float(asc - desc) / float(upm) : 1.f;
 }
 
-void apply_imgui_style() {
+// Font bytes from a file (kept alive in the state) or from memory.
+std::filesystem::path from_u8(const char *s) {
+  return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t *>(s)));
+}
+
+struct Bytes {
+  const unsigned char *data = nullptr;
+  std::size_t size = 0;
+};
+Bytes read_source(const FontSource &src) {
+  if (src.data) return {static_cast<const unsigned char *>(src.data), src.size};
+  if (!src.path) return {};
+  std::ifstream in(from_u8(src.path), std::ios::binary);
+  if (!in) return {};
+  std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  if (bytes.empty()) return {};
+  auto &kept = S().font_data.emplace_back(std::move(bytes));
+  return {kept.data(), kept.size()};
+}
+
+ImFont *add_font(Bytes bytes, const char *name) {
+  if (!bytes.data) return nullptr;
+  ImFontConfig cfg;
+#ifdef IMGUI_ENABLE_FREETYPE
+  cfg.FontLoaderFlags = ImGuiFreeTypeLoaderFlags_LightHinting;
+#endif
+  cfg.PixelSnapH = true;
+  cfg.FontDataOwnedByAtlas = false; // Silta (or the caller) owns the bytes
+  std::snprintf(cfg.Name, sizeof cfg.Name, "%s", name);
+  return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(bytes.data), int(bytes.size), 0.f,
+                                                     &cfg);
+}
+
+bool load_fonts(const InitOptions &o) {
+  State &st = S();
+  // 1. Explicit sources.
+  FontSource regular = o.regular, medium = o.medium, semibold = o.semibold;
+  // 2. The faces built into the library.
+#ifdef SILTA_EMBED_FONTS
+  if (regular.empty() && !o.font_dir) {
+    regular = {nullptr, detail::inter_regular, detail::inter_regular_size};
+    if (medium.empty()) medium = {nullptr, detail::inter_medium, detail::inter_medium_size};
+    if (semibold.empty()) semibold = {nullptr, detail::inter_semibold, detail::inter_semibold_size};
+  }
+#endif
+  // 3. Inter files in a folder.
+  std::vector<std::string> dir_paths; // keeps path strings alive
+  if (regular.empty()) {
+    std::vector<std::filesystem::path> dirs;
+    if (o.font_dir) dirs.push_back(from_u8(o.font_dir));
+    dirs.push_back(executable_dir() / "fonts");
+#ifdef SILTA_DEFAULT_FONT_DIR
+    dirs.emplace_back(SILTA_DEFAULT_FONT_DIR);
+#endif
+    for (const auto &dir : dirs) {
+      std::error_code ec;
+      if (!std::filesystem::exists(dir / "Inter-Regular.ttf", ec)) continue;
+      for (const char *file : {"Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf"}) {
+        const std::u8string u8 = (dir / file).u8string();
+        dir_paths.emplace_back(u8.begin(), u8.end());
+      }
+      regular.path = dir_paths[0].c_str();
+      if (medium.empty()) medium.path = dir_paths[1].c_str();
+      if (semibold.empty()) semibold.path = dir_paths[2].c_str();
+      break;
+    }
+  }
+
+  // ImGui uses the atlas' first font as its default. A host that has not
+  // loaded one keeps ImGui's own default rather than silently getting Inter.
+  ImFontAtlas *atlas = ImGui::GetIO().Fonts;
+  if (!o.style_imgui && atlas->Fonts.empty()) atlas->AddFontDefault();
+
+  const Bytes r = read_source(regular);
+  st.fonts = {};
+  st.fonts.regular = add_font(r, "Inter Regular");
+  if (!st.fonts.regular) {
+    std::fprintf(stderr, "silta: Inter fonts not found, falling back to ImGui's default font\n");
+    st.fonts.em_to_imgui = 1.f;
+    return false;
+  }
+  st.fonts.medium = add_font(read_source(medium), "Inter Medium");
+  st.fonts.semibold = add_font(read_source(semibold), "Inter SemiBold");
+  if (!st.fonts.medium) st.fonts.medium = st.fonts.regular;
+  if (!st.fonts.semibold) st.fonts.semibold = st.fonts.medium;
+  st.fonts.em_to_imgui = em_ratio(r.data, r.size);
+  return true;
+}
+} // namespace
+
+bool init(const InitOptions &options) {
+  IM_ASSERT(ImGui::GetCurrentContext() && "silta::init needs an ImGui context");
+  State &st = S();
+  st.theme = options.theme;
+  st.scale = options.scale > 0 ? options.scale : 1.f;
+  st.style_imgui = options.style_imgui;
+  const bool loaded = load_fonts(options);
+  if (st.style_imgui) style_imgui();
+  request_frames(2);
+  return loaded;
+}
+
+void shutdown() { detail::release_context(ImGui::GetCurrentContext()); }
+
+void style_imgui() {
   if (!ImGui::GetCurrentContext()) return;
-  const Theme &t = state.theme;
+  State &st = S();
+  st.style_imgui = true;
+  const Theme &t = st.theme;
   ImGuiStyle &s = ImGui::GetStyle();
   s = ImGuiStyle();
   s.WindowPadding = ImVec2(0, 0);
@@ -92,9 +206,10 @@ void apply_imgui_style() {
   s.ScrollbarRounding = 9999;
   s.PopupRounding = t.radius_md();
   s.DisabledAlpha = 0.5f; // shadcn: disabled:opacity-50
-  s.ScaleAllSizes(state.scale);
-  s.FontScaleDpi = state.scale;
-  s.FontSizeBase = 14.f * state.fonts.em_to_imgui;
+  s.ScaleAllSizes(st.scale);
+  s.FontScaleDpi = st.scale;
+  s.FontSizeBase = 14.f * st.fonts.em_to_imgui;
+  if (st.fonts.regular) ImGui::GetIO().FontDefault = st.fonts.regular;
 
   auto set = [&](ImGuiCol idx, Color c) { s.Colors[idx] = c.vec4(); };
   set(ImGuiCol_Text, t.foreground);
@@ -112,66 +227,16 @@ void apply_imgui_style() {
   set(ImGuiCol_ScrollbarGrabActive, t.muted_foreground);
   set(ImGuiCol_TextSelectedBg, t.ring.fade(0.35f));
   set(ImGuiCol_InputTextCursor, t.foreground);
-  // Silta draws its own focus rings.
-  set(ImGuiCol_NavCursor, transparent);
-  set(ImGuiCol_ModalWindowDimBg, black.with_alpha(0.5f));
+  set(ImGuiCol_NavCursor, transparent);              // Silta draws its own focus rings
+  set(ImGuiCol_ModalWindowDimBg, transparent);       // Silta's Dialog draws its own overlay
 }
-
-ImFont *load_font(const std::filesystem::path &dir, const char *file) {
-  const std::filesystem::path path = dir / file;
-  std::error_code ec;
-  if (!std::filesystem::exists(path, ec)) return nullptr;
-  ImFontConfig cfg;
-#ifdef IMGUI_ENABLE_FREETYPE
-  cfg.FontLoaderFlags = ImGuiFreeTypeLoaderFlags_LightHinting;
-#endif
-  cfg.PixelSnapH = true;
-  std::snprintf(cfg.Name, sizeof cfg.Name, "%s", file);
-  return ImGui::GetIO().Fonts->AddFontFromFileTTF(path.string().c_str(), 0.f, &cfg);
-}
-} // namespace
-
-bool init(const InitOptions &options) {
-  IM_ASSERT(ImGui::GetCurrentContext() && "silta::init needs an ImGui context");
-  state.theme = options.theme;
-  state.scale = options.scale > 0 ? options.scale : 1.f;
-
-  std::vector<std::filesystem::path> dirs;
-  if (options.font_dir) dirs.emplace_back(options.font_dir);
-  dirs.push_back(executable_dir() / "fonts");
-#ifdef SILTA_DEFAULT_FONT_DIR
-  dirs.emplace_back(SILTA_DEFAULT_FONT_DIR);
-#endif
-  bool loaded = false;
-  for (const auto &dir : dirs) {
-    ImFont *regular = load_font(dir, "Inter-Regular.ttf");
-    if (!regular) continue;
-    state.fonts.regular = regular;
-    state.fonts.medium = load_font(dir, "Inter-Medium.ttf");
-    state.fonts.semibold = load_font(dir, "Inter-SemiBold.ttf");
-    if (!state.fonts.medium) state.fonts.medium = regular;
-    if (!state.fonts.semibold) state.fonts.semibold = state.fonts.medium;
-    state.fonts.em_to_imgui = em_ratio(dir / "Inter-Regular.ttf");
-    ImGui::GetIO().FontDefault = regular;
-    loaded = true;
-    break;
-  }
-  if (!loaded) {
-    std::fprintf(stderr, "silta: Inter fonts not found, falling back to ImGui's default font\n");
-    state.fonts = {};
-    state.fonts.em_to_imgui = 1.f;
-  }
-  state.initialized = true;
-  apply_imgui_style();
-  return loaded;
-}
-
-void shutdown() { state = State{}; }
 
 void begin_frame() {
+  State &st = S();
   // A wake-up that is due has done its job; components ask again if needed.
-  if (state.wake_at >= 0 && ImGui::GetTime() >= state.wake_at) state.wake_at = -1;
+  if (st.wake_at >= 0 && ImGui::GetTime() >= st.wake_at) st.wake_at = -1;
   detail::collect_textures();
+  detail::overlay_begin_frame();
   anim::begin_frame();
   layout::begin_frame();
 }
@@ -179,47 +244,60 @@ void begin_frame() {
 void end_frame() {
   layout::end_frame();
   anim::end_frame();
-  if (state.pending_frames > 0) --state.pending_frames;
-  if (layout::settling()) state.pending_frames = std::max(state.pending_frames, 1);
+  State &st = S();
+  if (st.pending_frames > 0) --st.pending_frames;
+  if (layout::settling()) st.pending_frames = std::max(st.pending_frames, 1);
 }
 
-const Theme &theme() { return state.theme; }
+const Theme &theme() { return S().theme; }
 
 void set_theme(const Theme &theme) {
-  state.theme = theme;
-  apply_imgui_style();
+  S().theme = theme;
+  if (S().style_imgui) style_imgui();
   request_frames(2);
 }
 
-float scale() { return state.scale; }
+float scale() { return S().scale; }
 
 void set_scale(float scale) {
-  if (scale <= 0 || scale == state.scale) return;
-  state.scale = scale;
-  apply_imgui_style();
+  State &st = S();
+  if (scale <= 0 || scale == st.scale) return;
+  st.scale = scale;
+  if (st.style_imgui) style_imgui();
   request_frames(2);
 }
 
-const Fonts &fonts() { return state.fonts; }
+const Fonts &fonts() { return S().fonts; }
 
-bool wants_frame() { return state.pending_frames > 0 || anim::running() || layout::settling(); }
+bool wants_frame() { return S().pending_frames > 0 || anim::running() || layout::settling(); }
 
-void request_frames(int count) { state.pending_frames = std::max(state.pending_frames, count); }
+void request_frames(int count) {
+  State &st = S();
+  st.pending_frames = std::max(st.pending_frames, count);
+}
 
 void wake_in(double seconds) {
   if (!ImGui::GetCurrentContext()) return;
+  State &st = S();
   const double at = ImGui::GetTime() + std::max(0.0, seconds);
-  if (state.wake_at < 0 || at < state.wake_at) state.wake_at = at;
+  if (st.wake_at < 0 || at < st.wake_at) st.wake_at = at;
 }
 
 double idle_timeout() {
   if (!ImGui::GetCurrentContext()) return -1;
+  const State &st = S();
   double timeout = ImGui::GetIO().WantTextInput ? 0.1 : -1; // caret blink
-  if (state.wake_at >= 0) {
-    const double until = std::max(0.0, state.wake_at - ImGui::GetTime());
+  if (st.wake_at >= 0) {
+    const double until = std::max(0.0, st.wake_at - ImGui::GetTime());
     timeout = timeout < 0 ? until : std::min(timeout, until);
   }
   return timeout;
+}
+
+#define SILTA_STR2(x) #x
+#define SILTA_STR(x) SILTA_STR2(x)
+const char *version() {
+  return SILTA_STR(SILTA_VERSION_MAJOR) "." SILTA_STR(SILTA_VERSION_MINOR) "." SILTA_STR(SILTA_VERSION_PATCH);
 }
 
 } // namespace silta

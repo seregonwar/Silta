@@ -1,5 +1,6 @@
 #include "silta/anim.hpp"
 #include "imgui_internal.h"
+#include "per_context.hpp"
 #include <cmath>
 #include <unordered_map>
 
@@ -13,8 +14,11 @@ struct Tween {
   int last_frame = 0;
 };
 
-std::unordered_map<ImGuiID, Tween> tweens;
-bool any_running = false;
+struct AnimState {
+  std::unordered_map<ImGuiID, Tween> tweens;
+  bool any_running = false;
+};
+AnimState &S() { return detail::per_context<AnimState>(); }
 
 float apply(Ease ease, float t) {
   switch (ease) {
@@ -63,7 +67,7 @@ ImGuiID sub_id(ImGuiID item, const char *property) { return ImHashStr(property, 
 float tween(ImGuiID id, float target, float duration, Ease ease) {
   const double now = ImGui::GetTime();
   const int frame = ImGui::GetFrameCount();
-  auto [it, inserted] = tweens.try_emplace(id);
+  auto [it, inserted] = S().tweens.try_emplace(id);
   Tween &tw = it->second;
   tw.last_frame = frame;
   if (inserted) {
@@ -83,27 +87,27 @@ float tween(ImGuiID id, float target, float duration, Ease ease) {
     tw.value = tw.to;
   } else {
     tw.value = tw.from + (tw.to - tw.from) * apply(tw.ease, t);
-    any_running = true;
+    S().any_running = true;
   }
   return tw.value;
 }
 
 void reset(ImGuiID id, float value) {
-  Tween &tw = tweens[id];
+  Tween &tw = S().tweens[id];
   tw.from = tw.to = tw.value = value;
   tw.last_frame = ImGui::GetFrameCount();
 }
 
-void begin_frame() { any_running = false; }
+void begin_frame() { S().any_running = false; }
 
 void end_frame() {
   // Forget values whose item has not been drawn for a while.
   const int frame = ImGui::GetFrameCount();
   if (frame % 60 != 0) return;
-  for (auto it = tweens.begin(); it != tweens.end();)
-    it = frame - it->second.last_frame > 120 ? tweens.erase(it) : std::next(it);
+  for (auto it = S().tweens.begin(); it != S().tweens.end();)
+    it = frame - it->second.last_frame > 120 ? S().tweens.erase(it) : std::next(it);
 }
 
-bool running() { return any_running; }
+bool running() { return S().any_running; }
 
 } // namespace silta::anim

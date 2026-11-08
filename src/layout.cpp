@@ -1,5 +1,6 @@
 #include "silta/layout.hpp"
 #include "silta/context.hpp"
+#include "per_context.hpp"
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
@@ -37,11 +38,14 @@ struct Live {
   int grow_count = 0, child_count = 0;
 };
 
-std::unordered_map<ImGuiID, Memory> memories;
-std::unordered_map<ImGuiID, int> root_sequence;
-std::vector<Live> stack;
-std::vector<std::vector<Live>> saved_stacks; // outer layouts while isolated
-bool layout_changed = false;
+struct LayoutState {
+  std::unordered_map<ImGuiID, Memory> memories;
+  std::unordered_map<ImGuiID, int> root_sequence;
+  std::vector<Live> stack;
+  std::vector<std::vector<Live>> saved_stacks; // outer layouts while isolated
+  bool layout_changed = false;
+};
+LayoutState &S() { return detail::per_context<LayoutState>(); }
 
 float snap(float v) { return std::floor(v + 0.5f); }
 bool is_row(const Live &f) { return f.options.axis == Axis::row; }
@@ -76,15 +80,15 @@ void advance(Live &f, ImVec2 size, bool grow) {
 }
 
 bool parent_stretches() {
-  return !stack.empty() && stack.back().options.align == Align::stretch;
+  return !S().stack.empty() && S().stack.back().options.align == Align::stretch;
 }
 } // namespace
 
 namespace layout {
 
 float fill_width() {
-  if (stack.empty()) return std::max(0.f, ImGui::GetContentRegionAvail().x);
-  const Live &f = stack.back();
+  if (S().stack.empty()) return std::max(0.f, ImGui::GetContentRegionAvail().x);
+  const Live &f = S().stack.back();
   if (!is_row(f)) return inner_cross(f);
   const Memory &m = *f.memory;
   const float gaps = f.gap * float(std::max(0, m.child_count - 1));
@@ -93,8 +97,8 @@ float fill_width() {
 }
 
 float fill_height() {
-  if (stack.empty()) return std::max(0.f, ImGui::GetContentRegionAvail().y);
-  const Live &f = stack.back();
+  if (S().stack.empty()) return std::max(0.f, ImGui::GetContentRegionAvail().y);
+  const Live &f = S().stack.back();
   if (is_row(f)) return inner_cross(f);
   const Memory &m = *f.memory;
   const float gaps = f.gap * float(std::max(0, m.child_count - 1));
@@ -106,39 +110,39 @@ float resolve_width(float points, float content_px) {
   if (points > 0) return px(points);
   if (points == fill) return fill_width();
   // align-items: stretch makes children of a column as wide as the column.
-  if (parent_stretches() && !is_row(stack.back())) return fill_width();
+  if (parent_stretches() && !is_row(S().stack.back())) return fill_width();
   return content_px;
 }
 
 float resolve_height(float points, float content_px) {
   if (points > 0) return px(points);
   if (points == fill) return fill_height();
-  if (parent_stretches() && is_row(stack.back())) return fill_height();
+  if (parent_stretches() && is_row(S().stack.back())) return fill_height();
   return content_px;
 }
 
 ImRect allocate(ImVec2 size, bool grow) {
   size = ImVec2(snap(size.x), snap(size.y));
-  if (stack.empty()) {
+  if (S().stack.empty()) {
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     ImGui::ItemSize(size);
     return {pos, ImVec2(pos.x + size.x, pos.y + size.y)};
   }
-  Live &f = stack.back();
+  Live &f = S().stack.back();
   const ImVec2 pos = next_position(f, size);
   advance(f, size, grow);
   return {pos, ImVec2(pos.x + size.x, pos.y + size.y)};
 }
 
 Isolate::Isolate() {
-  saved_stacks.push_back(std::move(stack));
-  stack.clear();
+  S().saved_stacks.push_back(std::move(S().stack));
+  S().stack.clear();
 }
 
 Isolate::~Isolate() {
-  IM_ASSERT(stack.empty() && "silta: a Flex scope was not closed inside an isolated layout");
-  stack = std::move(saved_stacks.back());
-  saved_stacks.pop_back();
+  IM_ASSERT(S().stack.empty() && "silta: a Flex scope was not closed inside an isolated layout");
+  S().stack = std::move(S().saved_stacks.back());
+  S().saved_stacks.pop_back();
 }
 
 bool at_least(Breakpoint breakpoint) {
@@ -148,38 +152,38 @@ bool at_least(Breakpoint breakpoint) {
 }
 
 void begin_frame() {
-  layout_changed = false;
-  root_sequence.clear();
-  stack.clear();
-  saved_stacks.clear();
+  S().layout_changed = false;
+  S().root_sequence.clear();
+  S().stack.clear();
+  S().saved_stacks.clear();
 }
 
 void end_frame() {
-  IM_ASSERT(stack.empty() && "silta: a Flex scope was not closed");
+  IM_ASSERT(S().stack.empty() && "silta: a Flex scope was not closed");
   const int frame = ImGui::GetFrameCount();
   if (frame % 60 != 0) return;
-  for (auto it = memories.begin(); it != memories.end();)
-    it = frame - it->second.last_frame > 120 ? memories.erase(it) : std::next(it);
+  for (auto it = S().memories.begin(); it != S().memories.end();)
+    it = frame - it->second.last_frame > 120 ? S().memories.erase(it) : std::next(it);
 }
 
-bool settling() { return layout_changed; }
+bool settling() { return S().layout_changed; }
 
 } // namespace layout
 
 Flex::Flex(const FlexOptions &options) {
   Live f;
   f.options = options;
-  f.top_level = stack.empty();
+  f.top_level = S().stack.empty();
 
   // Identity: explicit, or the position among the parent's containers.
   if (options.id) {
     f.id = ImGui::GetID(options.id);
   } else {
-    const ImGuiID seed = f.top_level ? ImGui::GetID("##silta.flex") : stack.back().id;
-    int seq = f.top_level ? root_sequence[seed]++ : stack.back().child_seq++;
+    const ImGuiID seed = f.top_level ? ImGui::GetID("##silta.flex") : S().stack.back().id;
+    int seq = f.top_level ? S().root_sequence[seed]++ : S().stack.back().child_seq++;
     f.id = ImHashData(&seq, sizeof seq, seed);
   }
-  f.memory = &memories[f.id];
+  f.memory = &S().memories[f.id];
   f.memory->last_frame = ImGui::GetFrameCount();
 
   const Edges &p = options.padding;
@@ -189,15 +193,15 @@ Flex::Flex(const FlexOptions &options) {
   // Outer size: fixed and fill resolve now; fit-content comes from last frame.
   ImVec2 size(layout::resolve_width(options.width, f.memory->outer.x),
               layout::resolve_height(options.height, f.memory->outer.y));
-  f.grow = !f.top_level && ((is_row(stack.back()) && options.width == fill) ||
-                            (!is_row(stack.back()) && options.height == fill));
-  const bool stretched_x = parent_stretches() && !is_row(stack.back());
-  const bool stretched_y = parent_stretches() && is_row(stack.back());
+  f.grow = !f.top_level && ((is_row(S().stack.back()) && options.width == fill) ||
+                            (!is_row(S().stack.back()) && options.height == fill));
+  const bool stretched_x = parent_stretches() && !is_row(S().stack.back());
+  const bool stretched_y = parent_stretches() && is_row(S().stack.back());
   f.fit_width = options.width == 0 && !stretched_x;
   f.fit_height = options.height == 0 && !stretched_y;
   size = ImVec2(snap(size.x), snap(size.y));
 
-  const ImVec2 pos = f.top_level ? ImGui::GetCursorScreenPos() : next_position(stack.back(), size);
+  const ImVec2 pos = f.top_level ? ImGui::GetCursorScreenPos() : next_position(S().stack.back(), size);
   f.outer = ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
   f.origin = ImVec2(pos.x + pl, pos.y + pt);
   f.inner = ImVec2(std::max(0.f, size.x - pl - pr), std::max(0.f, size.y - pt - pb));
@@ -213,14 +217,14 @@ Flex::Flex(const FlexOptions &options) {
   }
 
   id_ = f.id;
-  stack.push_back(f);
+  S().stack.push_back(f);
   ImGui::PushOverrideID(f.id);
 }
 
 Flex::~Flex() {
   ImGui::PopID();
-  Live f = stack.back();
-  stack.pop_back();
+  Live f = S().stack.back();
+  S().stack.pop_back();
   Memory &m = *f.memory;
 
   const Edges &p = f.options.padding;
@@ -236,7 +240,7 @@ Flex::~Flex() {
   if (differs(size.x, m.outer.x) || differs(size.y, m.outer.y) || differs(f.content_main, m.content_main) ||
       differs(f.content_cross, m.content_cross) || differs(f.fixed_main, m.fixed_main) ||
       f.grow_count != m.grow_count || f.child_count != m.child_count)
-    layout_changed = true;
+    S().layout_changed = true;
   m.outer = size;
   m.content_main = f.content_main;
   m.content_cross = f.content_cross;
@@ -248,19 +252,19 @@ Flex::~Flex() {
     ImGui::SetCursorScreenPos(f.outer.Min);
     ImGui::ItemSize(size);
   } else {
-    advance(stack.back(), size, f.grow);
+    advance(S().stack.back(), size, f.grow);
   }
 }
 
 ImRect Flex::rect() const {
-  for (const Live &f : stack)
+  for (const Live &f : S().stack)
     if (f.id == id_) return f.outer;
   return {};
 }
 
 void Spacer(float points) {
   const float v = px(points);
-  const bool row = !stack.empty() && is_row(stack.back());
+  const bool row = !S().stack.empty() && is_row(S().stack.back());
   layout::allocate(row ? ImVec2(v, 0) : ImVec2(0, v));
 }
 

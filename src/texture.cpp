@@ -1,6 +1,7 @@
 #include "silta/texture.hpp"
 #include "silta/context.hpp"
 #include "silta/draw.hpp"
+#include "per_context.hpp"
 #include "imgui_internal.h"
 #include <algorithm>
 #include <cmath>
@@ -9,19 +10,29 @@
 
 namespace silta {
 namespace {
-// Textures waiting for the backend to release their GPU side.
-std::vector<ImTextureData *> graveyard;
+// Textures waiting for the backend to release their GPU side, per context.
+struct Graveyard {
+  std::vector<ImTextureData *> textures;
+  // The context is going away: its backend has released everything already.
+  ~Graveyard() {
+    for (ImTextureData *tex : textures) IM_DELETE(tex);
+  }
+};
 
-void retire(ImTextureData *tex) {
+void retire(ImTextureData *tex, ImGuiContext *context) {
   if (!tex) return;
-  if (!ImGui::GetCurrentContext()) return; // context gone: the backend is gone too
+  if (!detail::context_alive(context)) { // context gone: so is its backend
+    IM_DELETE(tex);
+    return;
+  }
   tex->WantDestroyNextFrame = true;
-  graveyard.push_back(tex);
+  detail::per_context<Graveyard>(context).textures.push_back(tex);
 }
 } // namespace
 
 namespace detail {
 void collect_textures() {
+  auto &graveyard = per_context<Graveyard>().textures;
   for (auto it = graveyard.begin(); it != graveyard.end();) {
     ImTextureData *tex = *it;
     if (tex->Status == ImTextureStatus_Destroyed) {
@@ -38,20 +49,26 @@ void collect_textures() {
 
 Texture::~Texture() { reset(); }
 
-Texture::Texture(Texture &&other) noexcept : tex_(other.tex_) { other.tex_ = nullptr; }
+Texture::Texture(Texture &&other) noexcept : tex_(other.tex_), context_(other.context_) {
+  other.tex_ = nullptr;
+  other.context_ = nullptr;
+}
 
 Texture &Texture::operator=(Texture &&other) noexcept {
   if (this != &other) {
     reset();
     tex_ = other.tex_;
+    context_ = other.context_;
     other.tex_ = nullptr;
+    other.context_ = nullptr;
   }
   return *this;
 }
 
 void Texture::reset() {
-  retire(tex_);
+  retire(tex_, context_);
   tex_ = nullptr;
+  context_ = nullptr;
 }
 
 int Texture::width() const { return tex_ ? tex_->Width : 0; }
@@ -68,6 +85,7 @@ void Texture::update(const void *rgba, int width, int height, int stride) {
     tex_->Create(ImTextureFormat_RGBA32, width, height);
     tex_->UseColors = true;
     ImGui::RegisterUserTexture(tex_);
+    context_ = ImGui::GetCurrentContext();
   }
   const auto *src = static_cast<const unsigned char *>(rgba);
   for (int y = 0; y < height; ++y)

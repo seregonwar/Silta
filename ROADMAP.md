@@ -13,7 +13,7 @@ Two questions decide the order:
 
 Sizes are rough: **S** days, **M** one to two weeks, **L** several weeks.
 
-## Where we are (0.1)
+## Starting point (0.1)
 
 - Core library (theme, layout, animation, text, drawing, textures, components)
   builds on Windows, Linux and macOS in CI; the application shell runs on
@@ -32,29 +32,29 @@ shell, no visual regression tests, limited component set, no docs site.
 
 ---
 
-## 0.2: Embeddable
+## 0.2: Embeddable (done)
 
 Silta must be safe to add to an app that already uses Dear ImGui, and to
 consume like any CMake package. Cheapest milestone, biggest effect on
 adoption, so it comes first.
 
-- [ ] **Scoped styling (S).** `silta::init` stops resetting the global
+- [x] **Scoped styling (S).** `silta::init` stops resetting the global
       `ImGuiStyle`. Silta components draw with Silta's theme; ImGui's own
       widgets keep the host's style. Opt-in helper to theme ImGui widgets too.
-- [ ] **Bring your own ImGui (S).** `SILTA_IMGUI_TARGET` to use the host's
+- [x] **Bring your own ImGui (S).** `SILTA_IMGUI_TARGET` to use the host's
       ImGui target instead of fetching one; a configure-time check of the
       minimum version (1.92.8) and of required defines.
-- [ ] **State per context (M).** Move the global maps (layout memory, tweens,
+- [x] **State per context (M).** Move the global maps (layout memory, tweens,
       overlay memory, toasts, tooltip state, texture graveyard) into a
       `silta::Context` attached to each ImGui context. Several windows and
       several ImGui contexts (e.g. a projector window) work side by side.
-- [ ] **Install and export (S).** `install()` rules, `SiltaConfig.cmake`,
+- [x] **Install and export (S).** `install()` rules, `SiltaConfig.cmake`,
       `find_package(Silta 0.2 CONFIG)`, targets `Silta::silta` and
       `Silta::app`; works with CPM and `add_subdirectory` too.
-- [ ] **Fonts without files (S).** Inter embedded (compressed) by default,
+- [x] **Fonts without files (S).** Inter embedded (compressed) by default,
       so a consumer does not have to ship a `fonts/` folder; custom fonts
       still loadable from files or memory.
-- [ ] **Embedding guide (S).** `docs/embedding.md`: Silta inside an engine
+- [x] **Embedding guide (S).** `docs/embedding.md`: Silta inside an engine
       or player that owns the renderer (init, per-frame calls, textures,
       render-on-demand hooks), with a minimal example under `examples/`.
 
@@ -73,8 +73,7 @@ nothing and has no font fallback.
 - [ ] **Bidirectional text (M).** Right-to-left and mixed runs (FriBidi or
       ICU's bidi), RTL layout direction for rows.
 - [ ] **Font fallback (M).** Per-codepoint fallback chain: Inter, then
-      system CJK/emoji fonts found per platform (the approach PBS Studio
-      uses by hand), colour emoji.
+      system CJK/emoji fonts found per platform, colour emoji.
 - [ ] **Textarea (M).** Multi-line editing: wrapping, selection, undo,
       clipboard, scrolling, placeholder, max length.
 - [ ] **IME (S).** Verify and fix composition (Japanese, Chinese, Korean)
@@ -97,14 +96,48 @@ images cover each.
 - [ ] **Device loss (S).** Recreate the renderer after a GPU reset or driver
       update without losing UI state (textures are re-uploaded by ImGui).
 - [ ] **Window chrome (M).** Optional custom title bar drawn by Silta with
-      native behaviour (drag, snap, double-click maximise), as in PBS Studio.
-- [ ] Mobile (Android/iOS) stays out of scope until 1.0 (see below).
+      native behaviour (drag, snap, double-click maximise).
 
 **Done when** the gallery and Silta Cut run on Windows, macOS and Linux from
 the same sources, CI builds all three shells, and visual regression runs on
 each.
 
-## 0.5: Accessibility
+## 0.5: Mobile
+
+Phones and tablets are first-class targets for 1.0: the same Silta code runs
+on Android and iOS/iPadOS, with touch as the primary input.
+
+- [ ] **Android shell (L).** GameActivity (or NativeActivity) host, Vulkan
+      with an OpenGL ES 3 fallback, surface loss and recreation across
+      pause/resume, safe-area insets (cutouts, gesture bar), system back
+      gesture, density changes and multi-window.
+- [ ] **iOS and iPadOS shell (L).** UIKit view with Metal, scene lifecycle,
+      safe areas, keyboard avoidance, pointer and Apple Pencil input, Split
+      View and Stage Manager sizes.
+- [ ] **Touch input (M).** Tap, long press, pan, pinch and fling recognised
+      once and shared by all components; momentum scrolling with overscroll;
+      pressed states instead of hover; minimum 44-point touch targets.
+- [ ] **Soft keyboard and IME (M).** Show/hide the system keyboard for text
+      fields, keyboard types (numbers, email, URL), composition (CJK) and
+      autocorrect handled by the platform, the focused field kept visible.
+- [ ] **Touch-adapted components (M).** Bottom `Sheet`, menus and `Select`
+      as sheets on phones, tooltips on long press, larger slider thumbs,
+      responsive defaults by breakpoint, swipe actions for list rows.
+- [ ] **Platform services (S).** File pickers (Storage Access Framework,
+      `UIDocumentPickerViewController`), share sheet, clipboard, haptics,
+      keep-awake.
+- [ ] **Battery and memory (S).** Render on demand already applies; add
+      background suspension, texture memory budgets and low-memory warnings.
+- [ ] **Project templates (M).** Gradle/AGP template and CMake-generated
+      Xcode project, signing left to the app; CI builds an APK and an iOS
+      simulator app.
+
+**Done when** the gallery and a sample app run on an Android phone and tablet
+and on iPhone and iPad from the same sources, CI builds both, and the visual
+regression and interaction scripts run on an Android emulator and an iOS
+simulator.
+
+## 0.6: Accessibility
 
 The European Accessibility Act applies to many consumer products sold in the
 EU since June 2025; screen reader support is also a requirement for many
@@ -113,7 +146,8 @@ enterprise buyers.
 - [ ] **AccessKit integration (L).** Each frame Silta builds an accessibility
       tree from its components (stable IDs already exist) and hands updates to
       AccessKit's C API; adapters for Windows (UIA), macOS (NSAccessibility)
-      and Linux (AT-SPI).
+      and Linux (AT-SPI), and the platform accessibility services on Android
+      (TalkBack) and iOS (VoiceOver).
 - [ ] **Roles, names and states (M)** for every component: button, checkbox,
       switch, slider (value and range), tabs, menu and menu items, list box
       (Select), dialog (modal), tooltip (description), text field.
@@ -123,13 +157,14 @@ enterprise buyers.
 - [ ] **Preferences (S).** Respect reduced motion (skip animations), high
       contrast, and system text scaling.
 
-**Done when** Narrator, VoiceOver and Orca can operate the gallery and the
-Silta Cut main screens with keyboard only; an automated test walks the
+**Done when** Narrator, VoiceOver (macOS and iOS), Orca and TalkBack can
+operate the gallery and the Silta Cut main screens (desktop: with keyboard
+only); an automated test walks the
 accessibility tree of the gallery.
 
-## 0.6: Components and documentation
+## 0.7: Components and documentation
 
-Can run in parallel with 0.3 to 0.5.
+Can run in parallel with 0.3 to 0.6.
 
 - [ ] **Data (L).** `DataTable` (sorting, column resize, selection,
       virtualized rows for 100k items), virtualized `List`, `Tree`.
@@ -158,7 +193,7 @@ Can run in parallel with 0.3 to 0.5.
 **Done when** the docs site is public with a live demo for every component,
 and the shadcn component list is covered except web-only pieces.
 
-## 0.7: Bindings
+## 0.8: Bindings
 
 - [ ] **C API (L).** A stable C ABI over the public API (POD option structs,
       opaque handles for textures and scopes), versioned separately.
@@ -208,9 +243,6 @@ Silta Cut).
 
 ## Not planned before 1.0
 
-- **Mobile shells** (Android, iOS). The core is portable and PBS Studio
-  proves the approach, but touch-first components and platform lifecycles
-  are a project of their own; revisit after 1.0.
 - **A retained-mode API.** Silta stays immediate mode; the per-frame tree it
   builds for layout and accessibility is internal.
 - **Copy-paste distribution** in the style of shadcn's CLI. Silta is a

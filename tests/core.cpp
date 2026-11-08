@@ -76,8 +76,73 @@ void ui_tests() {
   }
   shutdown(); ImGui::DestroyContext();
 }
+
+// One frame of Silta in the current context; also acknowledges the texture
+// requests like a renderer backend would.
+void frame(const char *window) {
+  using namespace silta;
+  ImGui::NewFrame(); begin_frame();
+  ImGui::SetNextWindowSize({600, 400}); ImGui::Begin(window);
+  { auto column = Column({.gap = 8, .width = 300}); Text(window); Button("Go"); bool on = true; Switch("On", &on); }
+  toast("hello");
+  Toaster();
+  ImGui::End(); end_frame(); ImGui::Render();
+  for (auto *texture : ImGui::GetPlatformIO().Textures) {
+    if (texture->Status == ImTextureStatus_WantCreate || texture->Status == ImTextureStatus_WantUpdates)
+      texture->SetTexID(1), texture->SetStatus(ImTextureStatus_OK);
+    else if (texture->Status == ImTextureStatus_WantDestroy) texture->SetTexID(ImTextureID_Invalid), texture->SetStatus(ImTextureStatus_Destroyed);
+  }
+}
+
+ImGuiContext *make_context() {
+  ImGuiContext *ctx = ImGui::CreateContext();
+  ImGui::SetCurrentContext(ctx);
+  auto &io = ImGui::GetIO();
+  io.IniFilename = nullptr; io.DisplaySize = {800, 600}; io.DeltaTime = 1.f / 60;
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+  ImGui::GetPlatformIO().Renderer_TextureMaxWidth = 4096;
+  ImGui::GetPlatformIO().Renderer_TextureMaxHeight = 4096;
+  return ctx;
+}
+
+// Two ImGui contexts run Silta side by side with their own state, and
+// destroying one leaves the other working.
+void multi_context_tests() {
+  using namespace silta;
+  ImGuiContext *a = make_context();
+  ImGui::StyleColorsClassic();
+  const ImVec4 host_text = ImGui::GetStyle().Colors[ImGuiCol_Text];
+  require(init({.theme = Theme::dark()}), "context A init");
+  require(ImGui::GetStyle().Colors[ImGuiCol_Text].x == host_text.x &&
+              ImGui::GetStyle().Colors[ImGuiCol_Text].w == host_text.w,
+          "init leaves the host's ImGui style alone");
+  ImGuiContext *b = make_context();
+  require(init({.theme = Theme::light(), .scale = 2.f}), "context B init");
+
+  for (int i = 0; i < 6; ++i) {
+    ImGui::SetCurrentContext(a); frame("A");
+    ImGui::SetCurrentContext(b); frame("B");
+  }
+  ImGui::SetCurrentContext(a);
+  require(theme().is_dark() && scale() == 1.f, "context A keeps its theme and scale");
+  ImGui::SetCurrentContext(b);
+  require(!theme().is_dark() && scale() == 2.f, "context B keeps its theme and scale");
+
+  {
+    // A texture outlives its context's destruction safely.
+    ImGui::SetCurrentContext(a);
+    Texture texture;
+    const unsigned char pixel[4] = {255, 0, 0, 255};
+    texture.update(pixel, 1, 1);
+    ImGui::DestroyContext(a);
+    ImGui::SetCurrentContext(b);
+  }
+  for (int i = 0; i < 4; ++i) frame("B after A");
+  require(!theme().is_dark(), "context B unaffected by A's destruction");
+  ImGui::DestroyContext(b);
+}
 }
 int main() {
-  try { color_tests(); theme_tests(); ui_tests(); std::cout << "Core tests passed\n"; return 0; }
+  try { color_tests(); theme_tests(); ui_tests(); multi_context_tests(); std::cout << "Core tests passed\n"; return 0; }
   catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }

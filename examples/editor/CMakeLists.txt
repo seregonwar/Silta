@@ -51,8 +51,11 @@ if(MSVC)
   target_link_options(silta_cut PRIVATE /ENTRY:mainCRTStartup)
 endif()
 cut_runtime(silta_cut)
-add_custom_command(TARGET silta_cut POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/assets/fonts" $<TARGET_FILE_DIR:silta_cut>/fonts)
+# Without SILTA_EMBED_FONTS, Silta looks for the fonts next to the executable.
+if(NOT SILTA_EMBED_FONTS)
+  add_custom_command(TARGET silta_cut POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/assets/fonts" $<TARGET_FILE_DIR:silta_cut>/fonts)
+endif()
 add_executable(cut_engine_test engine_tests.cpp)
 target_link_libraries(cut_engine_test PRIVATE cut_engine)
 if(WIN32)

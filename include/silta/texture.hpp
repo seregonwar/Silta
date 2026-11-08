@@ -34,6 +34,7 @@ public:
 
 private:
   ImTextureData *tex_ = nullptr;
+  ImGuiContext *context_ = nullptr; // the context the texture is registered with
 };
 
 enum class Fit { contain, cover, fill };

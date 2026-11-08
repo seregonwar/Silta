@@ -1,6 +1,5 @@
 #include "silta/components/input.hpp"
 #include "common.hpp"
-#include "misc/cpp/imgui_stdlib.h"
 #include <string>
 
 namespace silta {
@@ -21,12 +20,23 @@ template <class Edit> bool field(const char *id, const InputOptions &o, Edit edi
 
   // ImGui's InputText does the editing (caret, selection, clipboard, IME),
   // with its frame made invisible: Silta draws the box around it.
+  // Font size in pixels; ImGui multiplies the pushed size by the host's own
+  // global scales, so divide them out (the host may use another scale).
   const float fs = imgui_font_size(font_points(TextSize::sm));
-  ImGui::PushFont(font_for(Weight::regular), font_points(TextSize::sm) * fonts().em_to_imgui);
+  const ImGuiStyle &style = ImGui::GetStyle();
+  const float host_scale = std::max(1e-3f, style.FontScaleMain * style.FontScaleDpi);
+  ImGui::PushFont(font_for(Weight::regular), fs / host_scale);
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(12), std::floor((h - fs) / 2)));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
+  // Silta's colours, whatever the host's ImGui style is.
   ImGui::PushStyleColor(ImGuiCol_Text, t.foreground.vec4());
   ImGui::PushStyleColor(ImGuiCol_TextDisabled, t.muted_foreground.vec4());
+  ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, t.ring.fade(0.35f).vec4());
+  ImGui::PushStyleColor(ImGuiCol_InputTextCursor, t.foreground.vec4());
+  ImGui::PushStyleColor(ImGuiCol_NavCursor, ImVec4(0, 0, 0, 0));
 
   const ImVec2 saved = ImGui::GetCursorScreenPos();
   ImGui::SetCursorScreenPos(box.Min);
@@ -43,7 +53,7 @@ template <class Edit> bool field(const char *id, const InputOptions &o, Edit edi
   const bool active = ImGui::IsItemActive();
   ImGui::SetCursorScreenPos(saved);
 
-  ImGui::PopStyleColor(2);
+  ImGui::PopStyleColor(8);
   ImGui::PopStyleVar(2);
   ImGui::PopFont();
 
@@ -63,8 +73,18 @@ bool Input(const char *id, char *buffer, std::size_t buffer_size, const InputOpt
 }
 
 bool Input(const char *id, std::string *text, const InputOptions &o) {
+  // Grows the string as the user types (ImGui's resize callback).
+  auto resize = [](ImGuiInputTextCallbackData *data) {
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+      auto *str = static_cast<std::string *>(data->UserData);
+      str->resize(size_t(data->BufTextLen));
+      data->Buf = str->data();
+    }
+    return 0;
+  };
   return field(id, o, [&](const char *label, ImGuiInputTextFlags flags) {
-    return ImGui::InputTextWithHint(label, o.placeholder ? o.placeholder : "", text, flags);
+    return ImGui::InputTextWithHint(label, o.placeholder ? o.placeholder : "", text->data(), text->capacity() + 1,
+                                    flags | ImGuiInputTextFlags_CallbackResize, resize, text);
   });
 }
 

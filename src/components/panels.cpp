@@ -1,5 +1,6 @@
 #include "silta/components/panels.hpp"
 #include "common.hpp"
+#include "../per_context.hpp"
 #include <unordered_map>
 
 namespace silta {
@@ -10,10 +11,21 @@ ScrollArea::ScrollArea(const char *id, const ScrollAreaOptions &o) {
   const ImRect box = layout::allocate(size, o.width == fill);
   saved_cursor_ = ImGui::GetCursorScreenPos();
   ImGui::SetCursorScreenPos(box.Min);
+  // shadcn scroll-area: a thin, rounded thumb in the border colour.
+  const Theme &t = theme();
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, px(10));
+  ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, px(5));
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.f);
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, t.border.vec4());
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, mix(t.border, t.muted_foreground, 0.4f).vec4());
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, t.muted_foreground.vec4());
   ImGui::BeginChild(id, box.GetSize(), ImGuiChildFlags_None,
                     o.horizontal ? ImGuiWindowFlags_HorizontalScrollbar : ImGuiWindowFlags_None);
-  ImGui::PopStyleVar();
+  ImGui::PopStyleColor(5);
+  ImGui::PopStyleVar(4);
   isolate_.emplace();
   content_.emplace(FlexOptions{.axis = Axis::column, .gap = o.gap, .padding = o.padding, .align = Align::stretch,
                                .width = o.horizontal ? 0.f : fill});
@@ -29,7 +41,8 @@ ScrollArea::~ScrollArea() {
 
 // ================================================================= Split
 namespace {
-std::unordered_map<ImGuiID, float> split_share; // first pane's share, by id
+// First pane's share, by split id.
+std::unordered_map<ImGuiID, float> &split_share() { return detail::per_context<std::unordered_map<ImGuiID, float>>(); }
 }
 
 Split::Split(const char *id, const SplitOptions &o)
@@ -37,7 +50,7 @@ Split::Split(const char *id, const SplitOptions &o)
       outer_(FlexOptions{.axis = o.axis, .width = o.width, .height = o.height, .id = id}) {
   const ImRect box = outer_.rect();
   const float total = o.axis == Axis::row ? box.GetWidth() : box.GetHeight();
-  auto [it, inserted] = split_share.try_emplace(id_, o.initial);
+  auto [it, inserted] = split_share().try_emplace(id_, o.initial);
   float share = it->second;
   const float lo = px(o.min_first), hi = std::max(lo, total - px(o.min_second) - px(1));
   first_px_ = std::floor(std::clamp(total * share, lo, hi));
@@ -66,7 +79,7 @@ Flex Split::second(FlexOptions o) {
   if (in.held && total > 0) {
     const float origin = row ? box.Min.x : box.Min.y;
     const float mouse = row ? ImGui::GetIO().MousePos.x : ImGui::GetIO().MousePos.y;
-    split_share[id_] = std::clamp((mouse - origin) / total, 0.f, 1.f);
+    split_share()[id_] = std::clamp((mouse - origin) / total, 0.f, 1.f);
     request_frames(1);
   }
   ImDrawList *dl = ImGui::GetWindowDrawList();

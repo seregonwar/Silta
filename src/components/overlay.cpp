@@ -1,5 +1,6 @@
 #include "silta/components/overlay.hpp"
 #include "common.hpp"
+#include "../per_context.hpp"
 #include <cfloat>
 #include <deque>
 #include <string>
@@ -14,7 +15,15 @@ struct Memory {
   bool was_open = false;
   bool suppress_reopen = false; // closed by a press on its own trigger
 };
-std::unordered_map<ImGuiID, Memory> memory;
+struct OverlayMemory {
+  std::unordered_map<ImGuiID, Memory> items;
+  ImGuiID tooltip_item = 0;   // item whose tooltip is pending or shown
+  double tooltip_since = 0;   // when the hover started
+  // ImGui's modal dim colour, cleared while a Silta dialog draws its own.
+  ImVec4 saved_dim{};
+  bool dim_cleared = false;
+};
+OverlayMemory &M() { return detail::per_context<OverlayMemory>(); }
 
 ImRect viewport_rect() {
   const ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -123,12 +132,12 @@ struct Popover::State {
   float t = 1;
 };
 namespace {
-std::deque<Popover::State> popover_states;
+std::deque<Popover::State> &popover_states() { return detail::per_context<std::deque<Popover::State>>(); }
 }
 
 void OpenPopover(const char *sid) {
   const ImGuiID id = ImGui::GetID(sid);
-  Memory &m = memory[id];
+  Memory &m = M().items[id];
   m.anchor = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
   if (m.suppress_reopen) { // this press closed it: a second click toggles off
     m.suppress_reopen = false;
@@ -143,7 +152,7 @@ bool IsPopoverOpen(const char *sid) { return ImGui::IsPopupOpen(ImGui::GetID(sid
 
 Popover::Popover(const char *sid, const PopoverOptions &o) {
   const ImGuiID id = ImGui::GetID(sid);
-  Memory &m = memory[id];
+  Memory &m = M().items[id];
   if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseReleased(0)) m.suppress_reopen = false;
   if (!ImGui::IsPopupOpen(id, ImGuiPopupFlags_None)) {
     // Closed by the press that will also "click" the trigger: do not reopen.
@@ -163,7 +172,7 @@ Popover::Popover(const char *sid, const PopoverOptions &o) {
   pop_window_style();
   if (!open_) return;
 
-  State &s = popover_states.emplace_back();
+  State &s = popover_states().emplace_back();
   state_ = &s;
   s.id = id;
   s.isolate.emplace();
@@ -191,9 +200,9 @@ Popover::~Popover() {
   s.isolate.reset();
   zoom_vertices(s.dl, s.vtx_start, s.origin, 0.95f + 0.05f * s.t);
   ImGui::PopStyleVar();
-  memory[s.id].size = ImGui::GetWindowSize();
+  M().items[s.id].size = ImGui::GetWindowSize();
   ImGui::EndPopup();
-  popover_states.pop_back();
+  popover_states().pop_back();
 }
 
 // ========================================================== DropdownMenu
@@ -329,8 +338,8 @@ bool Select(const char *sid, int *selected, std::span<const char *const> items, 
 
 // =============================================================== Tooltip
 void Tooltip(const char *text, const TooltipOptions &o) {
-  static ImGuiID current = 0;
-  static double since = 0;
+  ImGuiID &current = M().tooltip_item;
+  double &since = M().tooltip_since;
   const ImGuiContext &g = *GImGui;
   const ImGuiID item = g.LastItemData.ID;
   const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
@@ -400,10 +409,19 @@ struct Dialog::State {
   float t = 1;
 };
 namespace {
-std::deque<Dialog::State> dialog_states;
+std::deque<Dialog::State> &dialog_states() { return detail::per_context<std::deque<Dialog::State>>(); }
 }
 
 void OpenDialog(const char *id) { ImGui::OpenPopup(id); }
+
+namespace detail {
+void overlay_begin_frame() {
+  OverlayMemory &mem = M();
+  if (!mem.dim_cleared) return; // restore the host's dim colour
+  ImGui::GetStyle().Colors[ImGuiCol_ModalWindowDimBg] = mem.saved_dim;
+  mem.dim_cleared = false;
+}
+} // namespace detail
 
 Dialog::Dialog(const char *sid, const DialogOptions &o) {
   const ImGuiID id = ImGui::GetID(sid);
@@ -418,7 +436,7 @@ Dialog::Dialog(const char *sid, const DialogOptions &o) {
   pop_window_style();
   if (!open_) return;
 
-  State &s = dialog_states.emplace_back();
+  State &s = dialog_states().emplace_back();
   state_ = &s;
   s.id = id;
   s.isolate.emplace();
@@ -426,6 +444,18 @@ Dialog::Dialog(const char *sid, const DialogOptions &o) {
   ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * s.t);
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   s.dl = window->DrawList;
+  // The overlay behind the dialog (bg-black/50), fading in with it. ImGui's own
+  // dim is cleared for this frame, so a host style cannot add a second one.
+  {
+    OverlayMemory &mem = M();
+    ImVec4 &dim = ImGui::GetStyle().Colors[ImGuiCol_ModalWindowDimBg];
+    if (!mem.dim_cleared) mem.saved_dim = dim, mem.dim_cleared = true;
+    dim.w = 0;
+    const ImRect vp_rect = viewport_rect();
+    s.dl->PushClipRect(vp_rect.Min, vp_rect.Max, false);
+    s.dl->AddRectFilled(vp_rect.Min, vp_rect.Max, black.with_alpha(0.5f).u32());
+    s.dl->PopClipRect();
+  }
   s.vtx_start = s.dl->VtxBuffer.Size;
   const ImRect box = window->Rect();
   s.origin = box.GetCenter();
@@ -467,7 +497,7 @@ Dialog::~Dialog() {
   zoom_vertices(s.dl, s.vtx_start, s.origin, 0.95f + 0.05f * s.t);
   ImGui::PopStyleVar();
   ImGui::EndPopup();
-  dialog_states.pop_back();
+  dialog_states().pop_back();
 }
 
 } // namespace silta

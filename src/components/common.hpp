@@ -42,10 +42,14 @@ inline const char *label_end(const char *label) { return ImGui::FindRenderedText
 struct DisabledScope {
   bool on;
   explicit DisabledScope(bool disabled) : on(disabled) {
-    if (on) ImGui::BeginDisabled(true);
+    if (!on) return;
+    ImGui::PushStyleVar(ImGuiStyleVar_DisabledAlpha, 0.5f); // disabled:opacity-50
+    ImGui::BeginDisabled(true);
   }
   ~DisabledScope() {
-    if (on) ImGui::EndDisabled();
+    if (!on) return;
+    ImGui::EndDisabled();
+    ImGui::PopStyleVar();
   }
 };
 

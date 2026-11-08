@@ -183,6 +183,7 @@ App::App(const AppOptions &options) : impl_(std::make_unique<Impl>()) {
   }
 #endif
   init_options.scale = sx;
+  init_options.style_imgui = true; // the shell's windows are Silta's own
   init(init_options);
 
   // Input callbacks installed before ImGui's: its backend chains to them, so

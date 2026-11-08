@@ -50,12 +50,26 @@ cmake --build build/win --config Release --parallel 2
 ./build/win/examples/gallery/Release/silta_gallery.exe
 ```
 
-Fonts are copied beside the example executables. To enable Vulkan, install its
-SDK and configure with `-DSILTA_RENDERER_VULKAN=ON`.
+The Inter fonts are built into the library, so executables need no `fonts/`
+folder. To enable Vulkan, install its SDK and configure with
+`-DSILTA_RENDERER_VULKAN=ON`.
 
 ### Use Silta in an application
 
-Add the repository as a CMake subdirectory and link the application shell:
+Install Silta and find it as a CMake package:
+
+```sh
+cmake -S . -B build -DSILTA_EXAMPLES=OFF -DBUILD_TESTING=OFF
+cmake --build build --config Release
+cmake --install build --config Release --prefix <prefix>
+```
+
+```cmake
+find_package(Silta 0.2 CONFIG REQUIRED)            # with CMAKE_PREFIX_PATH=<prefix>
+target_link_libraries(my_app PRIVATE Silta::app)   # or Silta::silta without the shell
+```
+
+Or add the sources to the build (subdirectory, `FetchContent` or CPM):
 
 ```cmake
 set(SILTA_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -86,12 +100,14 @@ int main() {
 }
 ```
 
-For an application with an existing window and renderer, link `Silta::silta`,
-call `silta::init()` after creating the ImGui context, and wrap UI work in
-`silta::begin_frame()` / `silta::end_frame()` inside the application's ImGui
-frame. Call `silta::shutdown()` before destroying the ImGui context. Components
-use Silta's drawing and styling; ImGui provides input, IDs, draw lists and text
-editing infrastructure.
+An application with its own window, renderer and ImGui setup links
+`Silta::silta`, calls `silta::init()` after creating its ImGui context, and wraps
+Silta's UI in `silta::begin_frame()` / `silta::end_frame()` inside its ImGui
+frame. Silta does not change the host's ImGui style or default font, keeps its
+state per ImGui context, and can be built against the host's own ImGui target
+(`-DSILTA_IMGUI_TARGET=...`, 1.92.8 or newer). The
+[embedding guide](docs/embedding.md) and the [embed example](examples/embed)
+show the details.
 
 ## Components
 
@@ -138,13 +154,17 @@ save/load is not implemented.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `SILTA_FREETYPE` | `ON` | Use FreeType to rasterize text |
+| `SILTA_FREETYPE` | `ON` | Use FreeType to rasterize text (with the fetched ImGui) |
+| `SILTA_EMBED_FONTS` | `ON` | Build the Inter fonts into the library |
+| `SILTA_IMGUI_TARGET` | empty | Build against this existing ImGui target instead of fetching ImGui |
+| `SILTA_IMGUI_BACKENDS_DIR` | empty | ImGui backend sources for the shell when `SILTA_IMGUI_TARGET` lacks them |
+| `SILTA_INSTALL` | `ON` for a top-level build | Install rules and the `Silta` CMake package |
 | `SILTA_APP` | `ON` | Build the window and renderer shell |
-| `SILTA_EXAMPLES` | `ON` for a top-level build | Build Gallery and Hello |
+| `SILTA_EXAMPLES` | `ON` for a top-level build | Build Gallery, Hello and (on Windows) Embed |
 | `SILTA_EDITOR` | `OFF` | Build Silta Cut and its test executables |
 | `SILTA_RENDERER_D3D11` | `ON` on Windows | Compile the Direct3D 11 backend |
 | `SILTA_RENDERER_VULKAN` | `ON` | Compile Vulkan when its SDK is found |
-| `BUILD_TESTING` | `ON` | Build and register renderer-free core tests |
+| `BUILD_TESTING` | `ON` | Core tests, plus package and host-ImGui integration tests |
 
 The renderer-free library can be built separately, including on Linux and macOS:
 

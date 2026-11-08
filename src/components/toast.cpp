@@ -1,6 +1,7 @@
 #include "silta/components/toast.hpp"
 #include "silta/icons.hpp"
 #include "common.hpp"
+#include "../per_context.hpp"
 #include <string>
 #include <vector>
 
@@ -13,8 +14,11 @@ struct Entry {
   float duration;
   ImGuiID id;
 };
-std::vector<Entry> toasts;
-unsigned next_id = 1;
+struct Toasts {
+  std::vector<Entry> list;
+  unsigned next_id = 1;
+};
+Toasts &T() { return detail::per_context<Toasts>(); }
 
 Icon icon_for(ToastKind k) {
   switch (k) {
@@ -38,10 +42,10 @@ Color color_for(ToastKind k, const Theme &t) {
 
 void toast(const char *title, const ToastOptions &o) {
   if (!ImGui::GetCurrentContext()) return;
-  toasts.push_back({title ? title : "", o.description ? o.description : "", o.kind, ImGui::GetTime(), o.duration,
-                    ImHashData(&next_id, sizeof next_id, 0x7057)});
-  anim::reset(anim::sub_id(toasts.back().id, "in"), 0.f); // slide in from below
-  ++next_id;
+  T().list.push_back({title ? title : "", o.description ? o.description : "", o.kind, ImGui::GetTime(), o.duration,
+                    ImHashData(&T().next_id, sizeof T().next_id, 0x7057)});
+  anim::reset(anim::sub_id(T().list.back().id, "in"), 0.f); // slide in from below
+  ++T().next_id;
   request_frames(2);
 }
 
@@ -49,8 +53,8 @@ void Toaster() {
   const double now = ImGui::GetTime();
   const float fade = 0.2f;
   // Drop the ones whose exit animation is over.
-  std::erase_if(toasts, [&](const Entry &e) { return now - e.created > e.duration + fade; });
-  if (toasts.empty()) return;
+  std::erase_if(T().list, [&](const Entry &e) { return now - e.created > e.duration + fade; });
+  if (T().list.empty()) return;
 
   const Theme &t = theme();
   const ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -60,7 +64,7 @@ void Toaster() {
   float bottom = vp->Pos.y + vp->Size.y - margin;
   double next_change = 1e9;
   // Newest at the bottom, older ones stacked above.
-  for (auto it = toasts.rbegin(); it != toasts.rend(); ++it) {
+  for (auto it = T().list.rbegin(); it != T().list.rend(); ++it) {
     const Entry &e = *it;
     const double age = now - e.created;
     const bool leaving = age > e.duration;
