@@ -23,7 +23,7 @@ try {
     # Real input through ImGui, in logical window coordinates. Assertions inspect
     # the resulting model; no edit operation is called directly by this script.
     $script = @(
-        'await:analysis','await:preview','check:clips=3',
+        'check:width=1440','check:height=900','await:analysis','await:preview','check:clips=3',
         'click:250,690','seek:1','key:s','check:clips=4',
         'key:undo','check:clips=3','key:redo','check:clips=4',
         'click:200,690','key:delete','check:clips=3','key:undo','check:clips=4',

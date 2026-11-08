@@ -41,7 +41,8 @@ struct AppOptions {
   InitOptions init;
   // Draw the UI in a full-window, scrollable root with the theme background.
   bool root_window = true;
-  // Never show the window (automated tests and screenshots).
+  // Never show the window (automated tests and screenshots). On Windows its
+  // client area keeps the requested size even when larger than the desktop.
   bool hidden = false;
 };
 

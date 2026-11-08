@@ -7,6 +7,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <string>
 #include <utility>
@@ -169,6 +170,18 @@ App::App(const AppOptions &options) : impl_(std::make_unique<Impl>()) {
   InitOptions init_options = options.init;
   float sx = 1, sy = 1;
   glfwGetWindowContentScale(a.window, &sx, &sy);
+#ifdef _WIN32
+  if (options.hidden) {
+    // CreateWindow/SetWindowPlacement can clamp the initial client area to the
+    // desktop's maximum tracking size (e.g. 1024x768 on hosted runners).
+    // Hidden test surfaces must retain the requested logical size, even when
+    // larger than the desktop, so scripted coordinates and captures agree.
+    const int width = int(std::lround(options.width * sx));
+    const int height = int(std::lround(options.height * sy));
+    glfwSetWindowSizeLimits(a.window, width, height, width, height);
+    glfwSetWindowSize(a.window, width, height);
+  }
+#endif
   init_options.scale = sx;
   init(init_options);
 

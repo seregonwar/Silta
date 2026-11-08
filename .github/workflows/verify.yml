@@ -100,7 +100,7 @@ jobs:
         run: cmake -S . -B build/ci -G "Visual Studio 17 2022" -A x64 -DSILTA_EDITOR=ON -DSILTA_RENDERER_VULKAN=OFF -DBUILD_TESTING=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
       - name: Build all applications and tests
         run: cmake --build build/ci --config Release --parallel 2 -- /nr:false
-      - name: Run core tests
+      - name: Run core and hidden-window regression tests
         run: ctest --test-dir build/ci -C Release --output-on-failure --no-tests=error
       - name: Exercise gallery in light and dark modes
         run: ./.github/scripts/gallery-smoke.ps1

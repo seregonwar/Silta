@@ -404,7 +404,8 @@ struct Editor {
     wake_in(1.0/60);
   }
   void fail(App &app,const std::string &message) {
-    std::fprintf(stderr,"%s\n",message.c_str()); exit_code=2; app.close();
+    std::fprintf(stderr,"Script step %zu: %s (viewport %.1fx%.1f, scale %.2f)\n",
+      script_step,message.c_str(),w,h,scale()); exit_code=2; app.close();
   }
   void run_script(App &app) {
     if (script_step>=script.size()) return;
@@ -447,7 +448,7 @@ struct Editor {
         field=="in"?(project.find(selected)?project.find(selected)->in:-1):field=="out"?(project.find(selected)?project.find(selected)->out:-1):
         field=="track"?(project.find(selected)?project.find(selected)->track:-1):field=="volume"?(project.find(selected)?project.find(selected)->volume:-1):
         field=="opacity"?(project.find(selected)?project.find(selected)->opacity:-1):field=="zoom"?zoom:
-        field=="dialog"?(ImGui::IsPopupOpen("export")?1:0):-999;
+        field=="dialog"?(ImGui::IsPopupOpen("export")?1:0):field=="width"?w:field=="height"?h:-999;
       // Slider pixel rounding varies slightly between hosted-runner DPI scales.
       const double tolerance = field=="zoom" ? 1.0 : 0.04;
       if (std::abs(value-expected)>tolerance) fail(app,"Failed "+arg+" actual="+std::to_string(value));
