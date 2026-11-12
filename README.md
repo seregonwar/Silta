@@ -29,8 +29,13 @@ existing render loop.
   fields keep Dear ImGui's editor.
 - **Consistent presentation.** Inter typography, rounded borders, shadows,
   focus rings and animated state transitions.
-- **Native application shell.** GLFW windows, Direct3D 11 and Vulkan backends,
-  runtime renderer switching, file dialogs, drag-and-drop and PNG screenshots.
+- **Native application shell.** GLFW windows with Direct3D 11, Vulkan and Metal
+  backends, runtime renderer switching, file dialogs, drag-and-drop and PNG
+  screenshots.
+- **Mobile shells.** An iOS/iPadOS shell (`silta/ios.hpp`: UIKit, Metal, touch
+  input, safe areas, soft keyboard) and an Android shell (`silta/android.hpp`:
+  NativeActivity, Vulkan, touch and keyboard input). The same render-on-demand
+  loop as the desktop shell, driven by the platform's event loop.
 - **Rendering on demand.** The shell waits for input when no animation or
   scheduled update requires another frame.
 - **Application examples.** A component gallery, a minimal form and Silta Cut,
@@ -173,6 +178,8 @@ save/load is not implemented.
 | `SILTA_EDITOR` | `OFF` | Build Silta Cut and its test executables |
 | `SILTA_RENDERER_D3D11` | `ON` on Windows | Compile the Direct3D 11 backend |
 | `SILTA_RENDERER_VULKAN` | `ON` | Compile Vulkan when its SDK is found |
+| `SILTA_RENDERER_METAL` | `ON` on Apple | Compile the Metal backend (desktop shell and iOS) |
+| `SILTA_ANDROID_GLUE` | empty | Folder with `android_native_app_glue.{c,h}` (empty: found in the NDK) |
 | `BUILD_TESTING` | `ON` | Core tests, plus package and host-ImGui integration tests |
 
 The renderer-free library can be built separately, including on Linux and macOS:
@@ -188,9 +195,12 @@ ctest --test-dir build/core -C Release --output-on-failure
 [Verify](.github/workflows/verify.yml) runs on **every push**, pull request and
 manual dispatch. It validates the workflow files, builds and tests the core on
 Windows, Linux and macOS, covers text rendering with and without FreeType, and
-builds the Windows applications. Windows checks exercise Gallery screenshots,
-media decoding, editing operations, playback, compositing, MP4 export and export
-cancellation. Logs, screenshots and verified packages are retained as artifacts.
+builds the Windows applications, the macOS applications with Metal, the Android
+NativeActivity shell (NDK) and the iOS shell (Xcode). Windows checks exercise
+Gallery screenshots, media decoding, editing operations, playback, compositing,
+MP4 export and export cancellation; the macOS job renders a Gallery screenshot
+through Metal. Logs, screenshots and verified packages are retained as
+artifacts.
 
 [Nightly](.github/workflows/nightly.yml) runs daily at **02:17 UTC** and can also
 be started manually on the default branch. It reruns the same verification
@@ -229,7 +239,7 @@ Set `SILTA_TRACE` to a file path to record render-loop diagnostics.
 ```text
 include/silta/     Public API and component headers
 src/              Themes, layout, drawing, animation and components
-src/app/          Windowing, native dialogs and renderer backends
+src/app/          Windowing (GLFW, UIKit, NativeActivity), native dialogs and renderer backends
 examples/hello/   Minimal application
 examples/gallery/ Component showcase
 examples/editor/  Silta Cut and media tests
@@ -241,12 +251,13 @@ docs/screenshots/ Gallery screenshots
 
 ## Status and contributing
 
-Silta is an early-stage project, currently version 0.1. The desktop application
-shell has been exercised on Windows with Direct3D 11 and Vulkan. Core library
-builds are checked separately on Linux and macOS; their native application shells
-and file dialogs are not complete. Metal, accessibility support, overlay exit
-animations and a C ABI/Rust binding remain future work; [ROADMAP.md](ROADMAP.md)
-lays out the milestones from here to 1.0.
+Silta is an early-stage project, currently version 0.3 in progress. The desktop
+application shell has been exercised on Windows with Direct3D 11 and Vulkan, and
+on macOS with Metal (CI renders Gallery screenshots through it). The iOS and
+Android shells build in CI and follow the same model, but they have not yet been
+exercised on devices. File dialogs are complete on Windows. Accessibility
+support, overlay exit animations and a C ABI/Rust binding remain future work;
+[ROADMAP.md](ROADMAP.md) lays out the milestones from here to 1.0.
 
 Bug reports and focused pull requests are welcome. Include the compiler,
 renderer, reproduction steps and relevant logs with a report. For a code change,

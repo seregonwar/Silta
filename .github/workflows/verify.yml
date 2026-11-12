@@ -74,8 +74,7 @@ jobs:
   windows:
     name: Windows applications and editor
     runs-on: windows-2022
-    timeout-minutes: 35
-    defaults:
+    timeout-minutes: 35    defaults:
       run:
         shell: pwsh
     steps:
@@ -126,4 +125,101 @@ jobs:
             build/ci/gallery-test/
             build/ci/Testing/Temporary/
             build/editor-test/
+          retention-days: 7
+
+  macos:
+    name: macOS applications (Metal)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/mac/_deps/imgui-src
+            build/mac/_deps/freetype-src
+            build/mac/_deps/glfw-src
+          key: desktop-deps-${{ runner.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Configure applications (Metal, no Vulkan)
+        run: cmake -S . -B build/mac -DSILTA_RENDERER_VULKAN=OFF -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/mac --config Release --parallel 2
+      - name: Run core tests
+        run: ctest --test-dir build/mac -C Release --output-on-failure --no-tests=error
+      - name: Smoke the gallery with Metal
+        run: |
+          set -euo pipefail
+          ./build/mac/examples/gallery/silta_gallery --hidden --dark --script="sleep:500;shot:build/mac/gallery-metal.png;quit"
+          test -s build/mac/gallery-metal.png
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-results
+          path: build/mac/Testing/Temporary/
+          retention-days: 7
+
+  android:
+    name: Android shell
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select NDK
+        run: echo "SILTA_ANDROID_NDK=$(ls -d /usr/local/lib/android/sdk/ndk/* | tail -1)" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/android/_deps/imgui-src
+            build/android/_deps/freetype-src
+            build/android/_deps/harfbuzz-src
+            build/android/_deps/sheenbidi-src
+          key: android-deps-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Configure the NativeActivity shell
+        run: cmake -S . -B build/android
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.SILTA_ANDROID_NDK }}/build/cmake/android.toolchain.cmake
+          -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26
+          -DSILTA_EXAMPLES=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/android --parallel 2
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-logs
+          path: build/android/CMakeFiles/*.log
+          retention-days: 7
+
+  ios:
+    name: iOS shell
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ios/_deps/imgui-src
+            build/ios/_deps/freetype-src
+            build/ios/_deps/harfbuzz-src
+            build/ios/_deps/sheenbidi-src
+          key: ios-deps-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Configure the iOS shell
+        run: cmake -S . -B build/ios -GXcode
+          -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator
+          -DSILTA_APP=ON -DSILTA_EXAMPLES=OFF -DSILTA_INSTALL=OFF -DBUILD_TESTING=OFF
+      - name: Build
+        run: cmake --build build/ios --config Release --parallel 2 --target silta_app
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: build/ios/CMakeFiles/*.log
           retention-days: 7

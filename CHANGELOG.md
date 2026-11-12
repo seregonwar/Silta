@@ -6,6 +6,21 @@ API, and these notes say how to update.
 ## Unreleased (0.3 in progress)
 
 ### Added
+- Metal renderer backend (`Backend::metal`) for the macOS window shell, selected
+  automatically on Apple and switchable at runtime with Vulkan/MoltenVK; GPU
+  frame read-back works for screenshots and visual regression.
+- iOS and iPadOS application shell: `silta/ios.hpp` runs a UIApplication (legacy
+  window lifecycle) with a Metal renderer, touch and Apple Pencil input, the
+  soft keyboard, safe-area-aware root window and the usual render-on-demand loop.
+- Android application shell: `silta/android.hpp` runs a NativeActivity host
+  (android_native_app_glue, NDK r23+) with a Vulkan renderer, touch and key
+  input (with Unicode characters), soft-keyboard follow, surface
+  recreation across pause/resume and content-rect insets.
+- Renderers can now serve native surfaces: `init_native` hands a shell-owned
+  MTKView (Metal) or ANativeWindow (Vulkan) to the shell-free render loop.
+- CI: the macOS job builds the applications with Metal and renders a Gallery
+  screenshot through it; new jobs build the Android shell with the NDK and the
+  iOS shell with Xcode.
 - Right-to-left layout: `InitOptions::direction` and `silta::set_direction()`
   mirror rows, cross-axis alignment, justification and component content
   (button and badge icons, checkbox and switch controls, tabs, slider,

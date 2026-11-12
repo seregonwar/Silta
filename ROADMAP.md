@@ -97,6 +97,10 @@ images cover each.
 
 - [ ] **macOS shell (L).** Cocoa window + Metal renderer (ImGui's Metal
       backend), Retina scale, native menus hook, `NSOpenPanel`/`NSSavePanel`.
+  - [x] **Metal renderer (2026-11).** `Backend::metal` serves the GLFW window
+        shell with an MTKView surface, Retina scale and GPU read-back; selected
+        automatically on Apple and switchable with Vulkan at runtime. The
+        Cocoa-native window, menus and panels above stay open.
 - [ ] **Linux shell (M).** GLFW on Wayland and X11 with Vulkan; file dialogs
       through xdg-desktop-portal.
 - [ ] **Fallback renderers (M).** OpenGL 3.3 (and Direct3D 12 on Windows),
@@ -119,9 +123,20 @@ on Android and iOS/iPadOS, with touch as the primary input.
       with an OpenGL ES 3 fallback, surface loss and recreation across
       pause/resume, safe-area insets (cutouts, gesture bar), system back
       gesture, density changes and multi-window.
+  - [x] **NativeActivity shell v1 (2026-11).** `silta/android.hpp` hosts the
+        loop through android_native_app_glue with the Vulkan renderer, ImGui's
+        Android input backend plus Unicode character input, the soft keyboard,
+        back-gesture mapping to Escape, surface recreation across
+        pause/resume and content-rect insets. GameActivity, GLES fallback and
+        full safe-area handling stay open.
 - [ ] **iOS and iPadOS shell (L).** UIKit view with Metal, scene lifecycle,
       safe areas, keyboard avoidance, pointer and Apple Pencil input, Split
       View and Stage Manager sizes.
+  - [x] **UIKit shell v1 (2026-11).** `silta/ios.hpp` runs the legacy
+        UIApplication lifecycle with a Metal renderer, touch input (one pointer,
+        two-finger scroll), the soft keyboard with keyboard avoidance and
+        safe-area-aware root window. Scene lifecycle, rich gesture recognition
+        and Split View/Stage Manager stay open.
 - [ ] **Touch input (M).** Tap, long press, pan, pinch and fling recognised
       once and shared by all components; momentum scrolling with overscroll;
       pressed states instead of hover; minimum 44-point touch targets.

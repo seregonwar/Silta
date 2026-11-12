@@ -19,6 +19,7 @@ const char *backend_name(Backend backend) {
   case Backend::automatic: return "Automatic";
   case Backend::d3d11: return "Direct3D 11";
   case Backend::vulkan: return "Vulkan";
+  case Backend::metal: return "Metal";
   }
   return "?";
 }
@@ -27,6 +28,9 @@ std::vector<Backend> available_backends() {
   std::vector<Backend> list;
 #if SILTA_HAS_D3D11
   list.push_back(Backend::d3d11);
+#endif
+#if SILTA_HAS_METAL
+  list.push_back(Backend::metal);
 #endif
 #if SILTA_HAS_VULKAN
   list.push_back(Backend::vulkan);
@@ -39,6 +43,9 @@ std::unique_ptr<detail::Renderer> make_renderer(Backend backend) {
   switch (backend) {
 #if SILTA_HAS_D3D11
   case Backend::d3d11: return detail::make_d3d11_renderer();
+#endif
+#if SILTA_HAS_METAL
+  case Backend::metal: return detail::make_metal_renderer();
 #endif
 #if SILTA_HAS_VULKAN
   case Backend::vulkan: return detail::make_vulkan_renderer();

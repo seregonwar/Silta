@@ -1,4 +1,6 @@
 // Vulkan renderer, based on Dear ImGui's example_glfw_vulkan (MIT).
+// Serves the desktop window shell through GLFW, and mobile shells through
+// init_native() with an ANativeWindow (Android).
 #include "renderer.hpp"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
@@ -8,6 +10,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+#ifdef __ANDROID__
+#include <android/native_window.h>
+#endif
 
 namespace silta::detail {
 namespace {
@@ -24,6 +30,8 @@ bool has_extension(const ImVector<VkExtensionProperties> &props, const char *nam
 
 class VulkanRenderer final : public Renderer {
   GLFWwindow *window_ = nullptr;
+  void *native_window_ = nullptr; // ANativeWindow* on Android
+  int native_w_ = 0, native_h_ = 0;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkPhysicalDevice physical_ = VK_NULL_HANDLE;
   VkDevice device_ = VK_NULL_HANDLE;
@@ -35,11 +43,25 @@ class VulkanRenderer final : public Renderer {
   bool rebuild_ = false;
   bool backend_ready_ = false;
 
+  void framebuffer_size(int &w, int &h) {
+#ifdef __ANDROID__
+    w = native_w_, h = native_h_; // native shells report their surface size
+#else
+    glfwGetFramebufferSize(window_, &w, &h);
+#endif
+  }
+
   bool create_device() {
     ImVector<const char *> extensions;
+#ifdef __ANDROID__
+    // The shell hands over an ANativeWindow; instance extensions are fixed.
+    extensions.push_back("VK_KHR_surface");
+    extensions.push_back("VK_KHR_android_surface");
+#else
     uint32_t count = 0;
     const char **glfw_ext = glfwGetRequiredInstanceExtensions(&count);
     for (uint32_t i = 0; i < count; ++i) extensions.push_back(glfw_ext[i]);
+#endif
 
     VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     uint32_t prop_count = 0;
@@ -106,8 +128,16 @@ class VulkanRenderer final : public Renderer {
   }
 
   bool create_window() {
+#ifdef __ANDROID__
+    if (!native_window_) return false;
+    VkAndroidSurfaceCreateInfoKHR sci = {VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR};
+    sci.window = static_cast<ANativeWindow *>(native_window_);
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    if (vkCreateAndroidSurfaceKHR(instance_, &sci, nullptr, &surface) != VK_SUCCESS) return false;
+#else
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface) != VK_SUCCESS) return false;
+#endif
     VkBool32 supported = VK_FALSE;
     vkGetPhysicalDeviceSurfaceSupportKHR(physical_, queue_family_, surface, &supported);
     if (!supported) {
@@ -123,18 +153,14 @@ class VulkanRenderer final : public Renderer {
     VkPresentModeKHR modes[] = {VK_PRESENT_MODE_FIFO_KHR};
     wd_.PresentMode = ImGui_ImplVulkanH_SelectPresentMode(physical_, surface, modes, IM_COUNTOF(modes));
     int w = 0, h = 0;
-    glfwGetFramebufferSize(window_, &w, &h);
+    framebuffer_size(w, h);
     ImGui_ImplVulkanH_CreateOrResizeWindow(instance_, physical_, device_, &wd_, queue_family_, nullptr, w, h,
                                            min_images_, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     return true;
   }
 
-public:
-  ~VulkanRenderer() override { shutdown(); }
-
-  bool init(GLFWwindow *window) override {
-    window_ = window;
-    if (!glfwVulkanSupported() || !create_device() || !create_window()) {
+  bool start_backend() {
+    if (!create_device() || !create_window()) {
       std::fprintf(stderr, "silta: Vulkan is not available\n");
       shutdown();
       return false;
@@ -156,9 +182,44 @@ public:
     return backend_ready_;
   }
 
+public:
+  ~VulkanRenderer() override { shutdown(); }
+
+  bool init(GLFWwindow *window) override {
+#ifndef __ANDROID__
+    window_ = window;
+    if (!glfwVulkanSupported()) {
+      std::fprintf(stderr, "silta: Vulkan is not available\n");
+      shutdown();
+      return false;
+    }
+    return start_backend();
+#else
+    (void)window;
+    return false; // mobile shells use init_native
+#endif
+  }
+
+  // Android mobile shell: `handle` is an ANativeWindow*; `width`/`height` the
+  // current surface size in pixels.
+  bool init_native(void *handle, int width, int height) override {
+    if (!handle) return false;
+#ifdef __ANDROID__
+    native_window_ = handle;
+    native_w_ = width, native_h_ = height;
+    min_images_ = 3; // Android surface caps usually require at least 3
+    return start_backend();
+#else
+    (void)width, (void)height;
+    return false;
+#endif
+  }
+
+  void resize(int width, int height) override { native_w_ = width, native_h_ = height; }
+
   void new_frame() override {
     int w = 0, h = 0;
-    glfwGetFramebufferSize(window_, &w, &h);
+    framebuffer_size(w, h);
     if (w > 0 && h > 0 && (rebuild_ || wd_.Width != w || wd_.Height != h)) {
       ImGui_ImplVulkan_SetMinImageCount(min_images_);
       ImGui_ImplVulkanH_CreateOrResizeWindow(instance_, physical_, device_, &wd_, queue_family_, nullptr, w, h,

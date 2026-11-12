@@ -27,7 +27,9 @@ std::vector<std::string> open_file_dialog(std::span<const FileFilter> filters = 
 std::optional<std::string> save_file_dialog(std::span<const FileFilter> filters = {},
                                             const char *default_name = nullptr, const char *title = nullptr);
 
-enum class Backend { automatic, d3d11, vulkan };
+// The renderer backends compiled into this build. `automatic` picks the best
+// one for the platform (D3D 11 on Windows, Metal on Apple, Vulkan elsewhere).
+enum class Backend { automatic, d3d11, vulkan, metal };
 
 const char *backend_name(Backend backend);
 // Backends compiled into this build, best first.
