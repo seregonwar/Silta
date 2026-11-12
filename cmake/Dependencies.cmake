@@ -144,7 +144,9 @@ if(SILTA_SHAPING)
   set(SILTA_SHAPING_ACTIVE ON)
 endif()
 
-if(SILTA_APP)
+# The desktop shell's window library; the iOS and Android shells use the
+# platform's own lifecycle instead.
+if(SILTA_APP AND NOT IOS AND NOT ANDROID)
   set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
   set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)

@@ -40,6 +40,26 @@ struct Shell {
 
 Shell shell;
 
+// A touch in the view's coordinates (points, as ImGui's display size).
+CGPoint touch_point(UITouch *touch, UIView *view) { return [touch locationInView:view]; }
+
+void mouse_button(bool down) {
+  ImGuiIO &io = ImGui::GetIO();
+  io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+  io.AddMouseButtonEvent(0, down);
+}
+
+void render_tick();
+void update_keyboard_height();
+void start_ui();
+void teardown();
+
+} // namespace
+} // namespace silta
+
+// Objective-C classes live at global scope; they use the shell through this.
+using namespace silta;
+
 // --------------------------------------------------------------------- input
 
 // Touches emulate one mouse pointer (the primary finger); two-finger drags
@@ -59,7 +79,10 @@ Shell shell;
   shell.input_seen = true;
   self.fingers += (NSInteger)touches.count;
   if (self.fingers >= 2) {
-    if (!self.scrolling) mouse_button(false); // a tap that became a scroll
+    if (!self.scrolling && self.primary) { // a tap that became a scroll
+      mouse_button(false);
+      self.primary = nil;
+    }
     self.scrolling = YES;
     self.scroll_centroid = [self centroid:event.allTouches];
     return;
@@ -109,6 +132,7 @@ Shell shell;
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  (void)event;
   shell.input_seen = true;
   self.fingers = std::max<NSInteger>(0, self.fingers - (NSInteger)touches.count);
   if (!self.scrolling && self.primary) {
@@ -177,6 +201,9 @@ Shell shell;
 }
 
 @end
+
+namespace silta {
+namespace {
 
 // ------------------------------------------------------------------- frames
 
@@ -298,7 +325,7 @@ void start_ui() {
               usingBlock:^(NSNotification *note) {
                 Shell &s = shell; // one UI thread
                 CGRect frame = CGRectZero;
-                if (UIWindow *window = weak_window) {
+                if (weak_window) {
                   id value = note.userInfo[UIKeyboardFrameEndUserInfoKey];
                   if (value) frame = [value CGRectValue];
                   s.keyboard_frame = frame;
@@ -319,6 +346,9 @@ void teardown() {
   }
   shell.renderer_ready = false;
 }
+
+} // namespace
+} // namespace silta
 
 // ------------------------------------------------------------- Cocoa objects
 
@@ -402,19 +432,21 @@ void teardown() {
 
 @end
 
-} // namespace silta
-
+namespace silta {
 int ios_main(int argc, char **argv, const AppOptions &options, const std::function<void()> &frame) {
   shell.options = &options;
   shell.frame = &frame;
   return UIApplicationMain(argc, argv, nil, NSStringFromClass([SiltaAppDelegate class]));
 }
+} // namespace silta
 
 #else // !SILTA_HAS_METAL
 
+namespace silta {
 int ios_main(int, char **, const AppOptions &, const std::function<void()> &) {
   std::fprintf(stderr, "silta: ios_main needs a build with the Metal renderer\n");
   return 1;
 }
+} // namespace silta
 
 #endif

@@ -1,6 +1,7 @@
 // Renderer-free regression tests. Exceptions keep checks active in Release.
 #include "silta/silta.hpp"
 #include "../src/text_edit.hpp"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>

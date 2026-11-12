@@ -1,7 +1,7 @@
-// Android application shell for NativeActivity: window and lifecycle through
-// android_native_app_glue (NDK r23+: input arrives through the glue's input
-// thread via android_input_buffer), touch and key input through Dear ImGui's
-// Android platform backend, the soft keyboard, and the Vulkan renderer on the
+// Android application shell for NativeActivity: window, lifecycle and input
+// through the NDK's android_native_app_glue (input events reach onInputEvent
+// on the UI thread), touch and key input through Dear ImGui's Android
+// platform backend, the soft keyboard, and the Vulkan renderer on the
 // ANativeWindow. One instance per process, one UI thread.
 #include "silta/android.hpp"
 #include "imgui.h"
@@ -37,6 +37,7 @@ struct Shell {
   std::chrono::steady_clock::time_point next_frame;
   jmethodID unicode_of = nullptr;
   jclass key_event_class = nullptr;
+  bool keyboard_shown = false;
 };
 
 Shell shell;
@@ -79,12 +80,11 @@ void feed_unicode(android_app *app, AInputEvent *event) {
 void keyboard_follow_input_focus(android_app *app) {
   ANativeActivity *activity = app->activity;
   if (!activity) return;
-  const ImGuiIO &io = ImGui::GetIO();
-  if (io.WantTextInput) {
-    activity->showSoftInput(activity, ANATIVEACTIVITY_SHOW_SOFT_INPUT_IMPLICIT);
-  } else {
-    activity->hideSoftInput(activity, ANATIVEACTIVITY_HIDE_SOFT_INPUT_NOT_ALWAYS);
-  }
+  const bool want = ImGui::GetIO().WantTextInput;
+  if (want == shell.keyboard_shown) return;
+  if (want) ANativeActivity_showSoftInput(activity, ANATIVEACTIVITY_SHOW_SOFT_INPUT_IMPLICIT);
+  else ANativeActivity_hideSoftInput(activity, ANATIVEACTIVITY_HIDE_SOFT_INPUT_NOT_ALWAYS);
+  shell.keyboard_shown = want;
 }
 
 // -------------------------------------------------------------- window state
@@ -174,35 +174,29 @@ void handle_cmd(android_app *app, int32_t cmd) {
   }
 }
 
-// Input events are preprocessed by the glue's input thread; drain them here.
-void drain_input(android_app *app) {
-  android_input_buffer *input = android_app_swap_input_buffers(app);
-  if (!input) return;
-  bool handled_any = false;
-  if (input->keyEventsCount > 0) {
-    for (uint64_t i = 0; i < input->keyEventsCount; ++i) {
-      AInputEvent *event = input->keyEvents[i];
-      const int32_t action = AKeyEvent_getAction(event);
-      if (action == AKEY_EVENT_ACTION_DOWN && AKeyEvent_getKeyCode(event) == AKEYCODE_BACK) {
-        // The UI decides; Escape reaches the frontend as "go back".
+// The glue delivers each input event here, on the UI thread. Returns 1 when
+// the event was consumed.
+int32_t handle_input(android_app *app, AInputEvent *event) {
+  if (!ImGui::GetCurrentContext()) return 0;
+  if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY) {
+    const int32_t action = AKeyEvent_getAction(event);
+    if (AKeyEvent_getKeyCode(event) == AKEYCODE_BACK) {
+      // The UI decides; Escape reaches the frontend as "go back".
+      if (action == AKEY_EVENT_ACTION_DOWN) {
         ImGuiIO &io = ImGui::GetIO();
         io.AddKeyEvent(ImGuiKey_Escape, true);
         io.AddKeyEvent(ImGuiKey_Escape, false);
-        handled_any = true;
-        continue;
+        shell.input_seen = true;
       }
-      if (ImGui_ImplAndroid_HandleInputEvent(event) != 0) handled_any = true;
-      if (action == AKEY_EVENT_ACTION_DOWN) feed_unicode(app, event);
+      return 1;
     }
-    android_app_clear_key_events(input);
+    const int32_t handled = ImGui_ImplAndroid_HandleInputEvent(event);
+    if (action == AKEY_EVENT_ACTION_DOWN) feed_unicode(app, event);
+    shell.input_seen = true;
+    return handled;
   }
-  if (input->motionEventsCount > 0) {
-    for (uint64_t i = 0; i < input->motionEventsCount; ++i)
-      if (ImGui_ImplAndroid_HandleInputEvent(input->motionEvents[i]) != 0) handled_any = true;
-    android_app_clear_motion_events(input);
-  }
-  if (input->redrawNeeded) shell.extra_frames = std::max(shell.extra_frames, 2);
-  if (handled_any) shell.input_seen = true;
+  shell.input_seen = true;
+  return ImGui_ImplAndroid_HandleInputEvent(event);
 }
 
 // -------------------------------------------------------------- the main loop
@@ -239,14 +233,14 @@ void android_run(android_app *app, const AppOptions &options, const std::functio
   init(init_options);
 
   app->onAppCmd = handle_cmd;
+  app->onInputEvent = handle_input;
 
   using clock = std::chrono::steady_clock;
   while (!app->destroyRequested) {
     int events = 0;
     android_poll_source *source = nullptr;
     const int ident = ALooper_pollOnce(poll_timeout(), nullptr, &events, (void **)&source);
-    if (ident == LOOPER_ID_MAIN && source) source->process(app, source); // lifecycle
-    drain_input(app);
+    if (ident >= 0 && source) source->process(app, source); // lifecycle or input
 
     const clock::time_point now = clock::now();
     const double now_s = steady_seconds(now);
@@ -275,9 +269,11 @@ void android_run(android_app *app, const AppOptions &options, const std::functio
 
 #else // !SILTA_HAS_VULKAN
 
+namespace silta {
 void android_run(android_app *app, const AppOptions &, const std::function<void()> &) {
   (void)app;
   __android_log_print(ANDROID_LOG_WARN, "silta", "android_run needs a build with the Vulkan renderer");
 }
+} // namespace silta
 
 #endif

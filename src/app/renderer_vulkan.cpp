@@ -1,19 +1,23 @@
 // Vulkan renderer, based on Dear ImGui's example_glfw_vulkan (MIT).
 // Serves the desktop window shell through GLFW, and mobile shells through
 // init_native() with an ANativeWindow (Android).
+#ifdef __ANDROID__
+// Before the first vulkan.h include (imgui_impl_vulkan.h has one).
+#define VK_USE_PLATFORM_ANDROID_KHR
+#include <android/native_window.h>
+#include <vulkan/vulkan.h>
+#endif
 #include "renderer.hpp"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+#ifndef __ANDROID__
 #define GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-
-#ifdef __ANDROID__
-#include <android/native_window.h>
-#endif
 
 namespace silta::detail {
 namespace {

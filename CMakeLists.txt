@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.24)
 project(Silta VERSION 0.2.0 LANGUAGES C CXX)
+if(APPLE)
+  # The Metal renderer and the iOS shell are Objective-C++. Enabled here, before
+  # any target or subdirectory, so every directory sees the language.
+  enable_language(OBJC OBJCXX)
+endif()
 include(CTest)
 include(GNUInstallDirs)
 
@@ -88,10 +93,6 @@ endif()
 # and drive silta from their own ImGui frame (see docs/embedding.md).
 # ---------------------------------------------------------------------------
 if(SILTA_APP)
-  if(APPLE)
-    enable_language(OBJCXX) # renderer_metal.mm and shell_ios.mm
-  endif()
-
   if(IOS)
     # ------------------------------------------------------- iOS/iPadOS shell
     # UIApplication (legacy window lifecycle) + MTKView + touch input + Metal.
@@ -140,6 +141,7 @@ if(SILTA_APP)
     endif()
     find_package(Vulkan REQUIRED)
     target_link_libraries(silta_app PRIVATE Vulkan::Vulkan)
+    set(SILTA_APP_VULKAN ON)
   else()
     # ------------------------------------------------- desktop window shell
     add_library(silta_app src/app/app.cpp src/app/dialogs.cpp)
