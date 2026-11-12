@@ -28,11 +28,22 @@ void Badge(const char *label, const BadgeOptions &o) {
   draw::border(dl, box, border, radius, px(1));
   float x = std::floor(box.GetCenter().x - content / 2);
   const float cy = box.GetCenter().y;
-  if (o.icon != Icon::none) {
-    draw_icon(dl, o.icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
-    x += icon_px + gap;
+  if (is_rtl()) {
+    if (!text.empty()) {
+      draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text.c_str(), TextSize::xs, Weight::medium, fg);
+      x += ts.x;
+    }
+    if (o.icon != Icon::none) {
+      if (!text.empty()) x += gap;
+      draw_icon(dl, o.icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
+    }
+  } else {
+    if (o.icon != Icon::none) {
+      draw_icon(dl, o.icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
+      x += icon_px + gap;
+    }
+    draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text.c_str(), TextSize::xs, Weight::medium, fg);
   }
-  draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text.c_str(), TextSize::xs, Weight::medium, fg);
 }
 
 } // namespace silta

@@ -40,6 +40,7 @@ struct State {
   Fonts fonts;
   int pending_frames = 2;
   bool style_imgui = false;
+  Direction direction = Direction::ltr;
   double wake_at = -1;           // ImGui time of the earliest requested wake-up
   std::vector<std::unique_ptr<detail::MappedFile>> font_files; // mapped font files
   detail::FaceData inter[3];            // regular, medium, semibold
@@ -224,6 +225,7 @@ bool init(const InitOptions &options) {
   st.theme = options.theme;
   st.scale = options.scale > 0 ? options.scale : 1.f;
   st.style_imgui = options.style_imgui;
+  st.direction = options.direction;
   const bool loaded = load_fonts(options);
   if (st.style_imgui) style_imgui();
   request_frames(2);
@@ -305,6 +307,17 @@ void set_theme(const Theme &theme) {
   if (S().style_imgui) style_imgui();
   request_frames(2);
 }
+
+Direction direction() { return S().direction; }
+
+void set_direction(Direction value) {
+  State &st = S();
+  if (st.direction == value) return;
+  st.direction = value;
+  request_frames(2);
+}
+
+bool is_rtl() { return S().direction == Direction::rtl; }
 
 float scale() { return S().scale; }
 

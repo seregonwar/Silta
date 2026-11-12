@@ -11,7 +11,8 @@ namespace silta {
 struct CheckboxOptions {
   bool disabled = false;
 };
-// A checkbox with its label on the right ("##id" for none). True when toggled.
+// A checkbox with its label after the box (right in LTR, left in RTL);
+// "##id" for none. True when toggled.
 bool Checkbox(const char *label, bool *value, const CheckboxOptions &options = {});
 
 struct SliderOptions {
@@ -20,6 +21,7 @@ struct SliderOptions {
   bool disabled = false;
 };
 // Drag the thumb, click the track, or use arrows / Home / End when focused.
+// In RTL the track starts at the right and the arrows follow it.
 bool Slider(const char *id, float *value, float min, float max, const SliderOptions &options = {});
 
 struct TabsOptions {

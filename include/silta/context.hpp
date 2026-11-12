@@ -17,6 +17,10 @@
 
 namespace silta {
 
+// Layout direction. In right-to-left layouts rows lay their children out from
+// the right and components put their content in the mirrored order.
+enum class Direction { ltr, rtl };
+
 // A font file on disk, or font data in memory (TTF/OTF). With `data`, the
 // memory must stay valid while the ImGui context lives.
 struct FontSource {
@@ -44,6 +48,9 @@ struct InitOptions {
   // Also theme ImGui's own widgets and windows, and make Silta's font ImGui's
   // default. Off for hosts with their own ImGui look; silta::App turns it on.
   bool style_imgui = false;
+  // Layout direction. Changeable at any time with set_direction(); kept per
+  // ImGui context like the theme.
+  Direction direction = Direction::ltr;
 };
 
 struct Fonts {
@@ -69,6 +76,12 @@ void end_frame();
 
 const Theme &theme();
 void set_theme(const Theme &theme);
+
+// Layout direction. Rows and components mirror in right-to-left mode, and text
+// aligned with the layout starts at the right.
+Direction direction();
+void set_direction(Direction direction);
+bool is_rtl();
 
 // Applies the theme to ImGui's own style (colors, rounding, spacing) and makes
 // Silta's regular font the default. Done automatically with style_imgui.

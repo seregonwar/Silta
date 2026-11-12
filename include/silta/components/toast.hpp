@@ -17,7 +17,7 @@ struct ToastOptions {
 
 void toast(const char *title, const ToastOptions &options = {});
 
-// Draws the toasts stacked in the bottom-right corner.
+// Draws the toasts stacked in the bottom-right corner (bottom-left in RTL).
 void Toaster();
 
 } // namespace silta

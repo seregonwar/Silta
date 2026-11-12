@@ -6,6 +6,11 @@ API, and these notes say how to update.
 ## Unreleased (0.3 in progress)
 
 ### Added
+- Right-to-left layout: `InitOptions::direction` and `silta::set_direction()`
+  mirror rows, cross-axis alignment, justification and component content
+  (button and badge icons, checkbox and switch controls, tabs, slider,
+  progress, menu rows, select and dialog chrome, toasts). `Text` and
+  `TextOptions::align` follow the layout direction.
 - Fallback fonts: characters Inter lacks come from system fonts (CJK in the
   user's language order, Indic, Thai, symbols, colour emoji). Configurable
   with `InitOptions::fallback` and `system_fallback`; font files are
@@ -16,6 +21,12 @@ API, and these notes say how to update.
   (SheenBidi). Emoji modifier, flag and ZWJ sequences become one glyph.
   Enabled by `SILTA_SHAPING` (default on); Latin, CJK and other simple text
   still uses ImGui's atlas.
+- Shaped editing: `Input` and `Textarea` lay out and edit right-to-left and
+  mixed text through the shaper, with joined Arabic/Hebrew glyphs,
+  right-anchored fields and a caret, selection and delete that follow visual
+  order. Copy, cut and paste (`Ctrl+A/C/X/V`) act on that same visual
+  selection, and pasted text keeps its shaped order. Plain left-to-right
+  fields keep ImGui's editor, and password fields always do.
 - `Textarea`: multi-line field that wraps and grows with its content.
 - ImGui is built with 32-bit characters (`IMGUI_USE_WCHAR32`) so emoji and
   other characters beyond U+FFFF render.

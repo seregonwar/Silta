@@ -77,9 +77,10 @@ Flex Split::second(FlexOptions o) {
   const ImRect box = outer_.rect();
   const float total = row ? box.GetWidth() : box.GetHeight();
   if (in.held && total > 0) {
-    const float origin = row ? box.Min.x : box.Min.y;
-    const float mouse = row ? ImGui::GetIO().MousePos.x : ImGui::GetIO().MousePos.y;
-    split_share()[id_] = std::clamp((mouse - origin) / total, 0.f, 1.f);
+    const float mouse = row ? (is_rtl() ? box.Max.x - ImGui::GetIO().MousePos.x
+                                        : ImGui::GetIO().MousePos.x - box.Min.x)
+                            : ImGui::GetIO().MousePos.y - box.Min.y;
+    split_share()[id_] = std::clamp(mouse / total, 0.f, 1.f);
     request_frames(1);
   }
   ImDrawList *dl = ImGui::GetWindowDrawList();

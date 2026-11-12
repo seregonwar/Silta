@@ -17,7 +17,9 @@ bool Checkbox(const char *label, bool *value, const CheckboxOptions &o) {
                                  : measure_text(text.c_str(), TextSize::sm, Weight::medium, 0, font_points(TextSize::sm));
   const ImRect box = layout::allocate(ImVec2(size + (text.empty() ? 0 : gap + ts.x), std::max(size, line)));
   const float top = std::floor(box.GetCenter().y - size / 2);
-  const ImRect square(ImVec2(box.Min.x, top), ImVec2(box.Min.x + size, top + size));
+  const bool mirrored = is_rtl();
+  const float square_x = mirrored ? box.Max.x - size : box.Min.x;
+  const ImRect square(ImVec2(square_x, top), ImVec2(square_x + size, top + size));
 
   detail::DisabledScope disabled(o.disabled);
   const detail::Interaction in = detail::interact(id, box, o.disabled);
@@ -42,8 +44,8 @@ bool Checkbox(const char *label, bool *value, const CheckboxOptions &o) {
               t.primary_foreground.fade(on));
   }
   if (!text.empty())
-    draw_text(dl, ImVec2(square.Max.x + gap, std::floor(box.GetCenter().y - ts.y / 2)), text.c_str(), TextSize::sm,
-              Weight::medium, t.foreground, 0, font_points(TextSize::sm));
+    draw_text(dl, ImVec2(mirrored ? box.Min.x : square.Max.x + gap, std::floor(box.GetCenter().y - ts.y / 2)),
+              text.c_str(), TextSize::sm, Weight::medium, t.foreground, 0, font_points(TextSize::sm));
   return in.pressed;
 }
 
@@ -56,6 +58,7 @@ bool Slider(const char *sid, float *value, float min, float max, const SliderOpt
   const ImRect box = layout::allocate(ImVec2(w, thumb), o.width == fill);
   // The thumb travels inside the box so it never overhangs.
   const float x0 = box.Min.x + thumb / 2, x1 = box.Max.x - thumb / 2;
+  const bool mirrored = is_rtl();
 
   detail::DisabledScope disabled(o.disabled);
   detail::Interaction in = detail::interact(id, box, o.disabled);
@@ -66,14 +69,15 @@ bool Slider(const char *sid, float *value, float min, float max, const SliderOpt
     return std::clamp(v, min, max);
   };
   if (in.held && max > min) {
-    const float f = std::clamp((ImGui::GetIO().MousePos.x - x0) / std::max(1.f, x1 - x0), 0.f, 1.f);
+    const float mx = ImGui::GetIO().MousePos.x;
+    const float f = std::clamp((mirrored ? x1 - mx : mx - x0) / std::max(1.f, x1 - x0), 0.f, 1.f);
     *value = snap(min + f * (max - min));
   }
   const ImGuiContext &g = *GImGui;
   if (!o.disabled && g.NavId == id && g.ActiveId == 0) {
     const float step = o.step > 0 ? o.step : (max - min) / 100.f;
-    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) *value = snap(*value - step);
-    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) *value = snap(*value + step);
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) *value = snap(*value + (mirrored ? step : -step));
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) *value = snap(*value + (mirrored ? -step : step));
     if (ImGui::IsKeyPressed(ImGuiKey_Home)) *value = min;
     if (ImGui::IsKeyPressed(ImGuiKey_End)) *value = max;
     // Left/right adjust the value, so navigation must not also move focus
@@ -85,11 +89,12 @@ bool Slider(const char *sid, float *value, float min, float max, const SliderOpt
   if (changed) ImGui::MarkItemEdited(id);
 
   const float f = max > min ? (*value - min) / (max - min) : 0.f;
-  const float cx = x0 + (x1 - x0) * f, cy = box.GetCenter().y;
+  const float cx = mirrored ? x1 - (x1 - x0) * f : x0 + (x1 - x0) * f, cy = box.GetCenter().y;
   ImDrawList *dl = ImGui::GetWindowDrawList();
   const ImRect track(ImVec2(box.Min.x, cy - track_h / 2), ImVec2(box.Max.x, cy + track_h / 2));
   draw::fill(dl, track, t.muted, track_h / 2);
-  draw::fill(dl, ImRect(track.Min, ImVec2(cx, track.Max.y)), t.primary, track_h / 2);
+  if (mirrored) draw::fill(dl, ImRect(ImVec2(cx, track.Min.y), track.Max), t.primary, track_h / 2);
+  else draw::fill(dl, ImRect(track.Min, ImVec2(cx, track.Max.y)), t.primary, track_h / 2);
   // hover:ring-4 focus-visible:ring-4 ring-ring/50
   const float ring = std::max(in.hover_t, in.focus_t);
   if (ring > 0) dl->AddCircleFilled(ImVec2(cx, cy), thumb / 2 + px(4), t.ring.fade(0.5f * ring).u32(), 32);
@@ -121,11 +126,13 @@ bool Tabs(const char *sid, int *active, std::span<const char *const> labels, con
   const float inner = box.GetWidth() - 2 * pad;
   const bool equal = inner > total + 0.5f;
   std::vector<ImRect> rects(labels.size());
-  float x = box.Min.x + pad;
+  const bool mirrored = is_rtl();
+  float x = mirrored ? box.Max.x - pad : box.Min.x + pad;
   for (size_t i = 0; i < labels.size(); ++i) {
     const float tw = equal ? inner / float(labels.size()) : natural[i];
-    rects[i] = ImRect(ImVec2(std::floor(x), box.Min.y + pad), ImVec2(std::floor(x + tw), box.Max.y - pad));
-    x += tw;
+    rects[i] = mirrored ? ImRect(ImVec2(std::floor(x - tw), box.Min.y + pad), ImVec2(std::floor(x), box.Max.y - pad))
+                        : ImRect(ImVec2(std::floor(x), box.Min.y + pad), ImVec2(std::floor(x + tw), box.Max.y - pad));
+    x += mirrored ? -tw : tw;
   }
   // Sliding active background.
   bool changed = false;
@@ -207,11 +214,22 @@ bool toggle_face(ImGuiID id, const char *text, Icon icon, bool on, const ToggleO
   ink = mix(ink, t.accent_foreground, on_t);
   float x = std::floor(box.GetCenter().x - content / 2);
   const float cy = box.GetCenter().y;
-  if (icon != Icon::none) {
-    draw_icon(dl, icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, ink);
-    x += icon_px + gap;
+  if (is_rtl()) {
+    if (ts.x > 0) {
+      draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text, TextSize::sm, Weight::medium, ink);
+      x += ts.x;
+    }
+    if (icon != Icon::none) {
+      if (ts.x > 0) x += gap;
+      draw_icon(dl, icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, ink);
+    }
+  } else {
+    if (icon != Icon::none) {
+      draw_icon(dl, icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, ink);
+      x += icon_px + gap;
+    }
+    if (ts.x > 0) draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text, TextSize::sm, Weight::medium, ink);
   }
-  if (ts.x > 0) draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text, TextSize::sm, Weight::medium, ink);
   return in.pressed;
 }
 } // namespace
@@ -255,8 +273,12 @@ void Progress(const char *sid, float value, const ProgressOptions &o) {
   const float shown = anim::tween(anim::sub_id(id, "value"), std::clamp(value, 0.f, 1.f), 0.3f);
   ImDrawList *dl = ImGui::GetWindowDrawList();
   draw::fill(dl, box, t.primary.fade(0.2f), h / 2);
-  if (shown > 0)
-    draw::fill(dl, ImRect(box.Min, ImVec2(box.Min.x + std::max(h, box.GetWidth() * shown), box.Max.y)), t.primary, h / 2);
+  if (shown > 0) {
+    const float filled = std::max(h, box.GetWidth() * shown);
+    const ImRect bar = is_rtl() ? ImRect(ImVec2(box.Max.x - filled, box.Min.y), box.Max)
+                                : ImRect(box.Min, ImVec2(box.Min.x + filled, box.Max.y));
+    draw::fill(dl, bar, t.primary, h / 2);
+  }
 }
 
 // ==================================================================== Kbd

@@ -16,6 +16,13 @@ constexpr Scale scale_table[] = {{12, 16}, {14, 20}, {16, 24}, {18, 28}, {20, 28
 
 int weight_index(Weight w) { return w == Weight::semibold ? 2 : w == Weight::medium ? 1 : 0; }
 
+TextAlign physical_align(TextAlign align) {
+  const bool rtl = direction() == Direction::rtl;
+  if (align == TextAlign::start) return rtl ? TextAlign::right : TextAlign::left;
+  if (align == TextAlign::end) return rtl ? TextAlign::left : TextAlign::right;
+  return align;
+}
+
 // How a piece of text is measured and drawn: by ImGui's atlas, or shaped
 // (complex scripts, right-to-left text, emoji sequences).
 struct Run {
@@ -23,19 +30,22 @@ struct Run {
   float size;
   int weight;
   bool shaped;
-  Run(const char *text, Weight w, float fs)
-      : font(font_for(w)), size(fs), weight(weight_index(w)),
-        shaped(detail::shaping_available() && detail::needs_shaping(text, text + std::strlen(text))) {}
+  bool rtl_base;
+  Run(const char *text, Weight w, float fs, bool rtl)
+      : font(font_for(w)), size(fs), weight(weight_index(w)), rtl_base(rtl),
+        shaped(detail::shaping_available() && (rtl || detail::needs_shaping(text, text + std::strlen(text)))) {}
   const char *wrap(const char *b, const char *e, float wrap_width) const {
-    return shaped ? detail::shaped_wrap(b, e, weight, size, wrap_width) : font->CalcWordWrapPosition(size, b, e, wrap_width);
+    return shaped ? detail::shaped_wrap(b, e, weight, size, wrap_width, rtl_base)
+                  : font->CalcWordWrapPosition(size, b, e, wrap_width);
   }
   float width(const char *b, const char *e) const {
     if (e <= b) return 0;
-    return shaped ? detail::shaped_width(b, e, weight, size) : font->CalcTextSizeA(size, FLT_MAX, 0, b, e).x;
+    return shaped ? detail::shaped_width(b, e, weight, size, rtl_base)
+                  : font->CalcTextSizeA(size, FLT_MAX, 0, b, e).x;
   }
   void draw(ImDrawList *list, ImVec2 pos, const char *b, const char *e, ImU32 col) const {
     if (e <= b) return;
-    if (shaped) detail::draw_shaped(list, pos, b, e, weight, size, col);
+    if (shaped) detail::draw_shaped(list, pos, b, e, weight, size, col, rtl_base);
     else list->AddText(font, size, pos, col, b, e);
   }
 };
@@ -79,7 +89,7 @@ ImFont *font_for(Weight weight) {
 float imgui_font_size(float points) { return px(points) * fonts().em_to_imgui; }
 
 ImVec2 measure_text(const char *text, TextSize size, Weight weight, float wrap_width, float line_height) {
-  const Run run(text, weight, imgui_font_size(font_points(size)));
+  const Run run(text, weight, imgui_font_size(font_points(size)), is_rtl());
   const float lh = line_px(size, line_height);
   float width = 0;
   int lines = 0;
@@ -91,17 +101,24 @@ ImVec2 measure_text(const char *text, TextSize size, Weight weight, float wrap_w
 }
 
 ImVec2 draw_text(ImDrawList *list, ImVec2 top_left, const char *text, TextSize size, Weight weight, Color color,
-                 float wrap_width, float line_height) {
-  const Run run(text, weight, imgui_font_size(font_points(size)));
+                 float wrap_width, float line_height, TextAlign align) {
+  const Run run(text, weight, imgui_font_size(font_points(size)), is_rtl());
   const float fs = run.size;
   const float lh = line_px(size, line_height);
   // The glyph box (ascender..descender) is centred in the line box, as CSS does.
   const float lead = std::round((lh - fs) / 2);
   const ImU32 col = color.u32();
+  const TextAlign align_px = physical_align(align);
   float y = top_left.y, width = 0;
   for_each_line(run, text, wrap_width, [&](const char *b, const char *e) {
-    run.draw(list, ImVec2(std::round(top_left.x), y + lead), b, e, col);
-    width = std::max(width, run.width(b, e));
+    const float line_width = run.width(b, e);
+    float x = top_left.x;
+    if (wrap_width > 0 && align_px != TextAlign::left) {
+      const float free = std::max(0.f, wrap_width - line_width);
+      x += align_px == TextAlign::center ? free / 2 : free;
+    }
+    run.draw(list, ImVec2(std::round(x), y + lead), b, e, col);
+    width = std::max(width, line_width);
     y += lh;
   });
   return {std::ceil(width), y - top_left.y};
@@ -112,8 +129,10 @@ void Text(const char *text, const TextOptions &o) {
   const Color color = o.color ? *o.color : o.muted ? t.muted_foreground : t.foreground;
   const float wrap = o.wrap ? layout::fill_width() : 0;
   const ImVec2 size = measure_text(text, o.size, o.weight, wrap, o.line_height);
-  const ImRect r = layout::allocate(ImVec2(wrap > 0 ? std::max(size.x, wrap) : size.x, size.y));
-  draw_text(ImGui::GetWindowDrawList(), r.Min, text, o.size, o.weight, color, wrap, o.line_height);
+  const float box_width = wrap > 0 ? std::max(size.x, wrap) : layout::block_width(size.x);
+  const ImRect r = layout::allocate(ImVec2(box_width, size.y));
+  draw_text(ImGui::GetWindowDrawList(), r.Min, text, o.size, o.weight, color, wrap > 0 ? wrap : box_width,
+            o.line_height, o.align);
 }
 
 void Label(const char *text) {

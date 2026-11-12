@@ -38,6 +38,7 @@ add_library(silta
   src/draw.cpp
   src/icons.cpp
   src/text.cpp
+  src/text_edit.cpp
   src/texture.cpp
   src/components/button.cpp
   src/components/badge.cpp

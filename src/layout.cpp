@@ -49,6 +49,7 @@ LayoutState &S() { return detail::per_context<LayoutState>(); }
 
 float snap(float v) { return std::floor(v + 0.5f); }
 bool is_row(const Live &f) { return f.options.axis == Axis::row; }
+bool rtl() { return direction() == Direction::rtl; }
 float main_of(const Live &f, ImVec2 v) { return is_row(f) ? v.x : v.y; }
 float cross_of(const Live &f, ImVec2 v) { return is_row(f) ? v.y : v.x; }
 
@@ -62,10 +63,18 @@ ImVec2 next_position(const Live &f, ImVec2 size) {
   const float free = inner_cross(f) - cross_of(f, size);
   float cross = 0;
   if (f.options.align == Align::center) cross = std::max(0.f, free / 2);
-  else if (f.options.align == Align::end) cross = std::max(0.f, free);
-  const float main = f.cursor;
-  return is_row(f) ? ImVec2(snap(f.origin.x + main), snap(f.origin.y + cross))
-                   : ImVec2(snap(f.origin.x + cross), snap(f.origin.y + main));
+  // Only a column's cross axis is horizontal, so only it mirrors. A stretched
+  // child of a fixed width stays at the start (right in RTL), as in CSS.
+  else if (is_row(f) ? f.options.align == Align::end
+                     : (rtl() ? f.options.align == Align::start || f.options.align == Align::stretch
+                              : f.options.align == Align::end))
+    cross = std::max(0.f, free);
+  if (is_row(f)) {
+    // Main axis right to left in RTL: the first child starts at the right edge.
+    const float main = rtl() ? std::max(0.f, f.inner.x - f.cursor - size.x) : f.cursor;
+    return ImVec2(snap(f.origin.x + main), snap(f.origin.y + cross));
+  }
+  return ImVec2(snap(f.origin.x + cross), snap(f.origin.y + f.cursor));
 }
 
 // `natural_cross`: the child's size on the cross axis before stretching (its
@@ -122,6 +131,16 @@ float resolve_height(float points, float content_px) {
   if (points == fill) return fill_height();
   if (parent_stretches() && is_row(S().stack.back())) return fill_height();
   return content_px;
+}
+
+float block_width(float content) {
+  if (S().stack.empty()) return content;
+  const Live &f = S().stack.back();
+  // A paragraph in a stretching column spans it, like a block element in CSS,
+  // so its alignment has room to work. Fit-content columns keep measuring
+  // their children.
+  if (is_row(f) || f.options.align != Align::stretch || f.fit_width) return content;
+  return std::max(content, inner_cross(f));
 }
 
 ImRect allocate(ImVec2 size, bool grow) {

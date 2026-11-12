@@ -31,4 +31,13 @@ struct TextareaOptions {
 // Returns true when the text changed.
 bool Textarea(const char *id, std::string *text, const TextareaOptions &options = {});
 
+// IME composition for the focused shaped Input/Textarea. `utf8` is the
+// in-progress preedit string; it is drawn shaped at the caret and replaces the
+// selection on commit, while the field's stored text stays untouched until
+// ime_commit(). Hosts with platform preedit support call these from their IME
+// callbacks. They return false when no shaped field is focused/composing.
+bool ime_composition(const char *utf8);
+bool ime_commit();
+bool ime_cancel();
+
 } // namespace silta

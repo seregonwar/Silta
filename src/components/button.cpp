@@ -87,12 +87,15 @@ bool Button(const char *label, const ButtonOptions &o) {
   }
   draw::border(dl, box, border, radius, px(1));
 
-  // Content, centred.
+  // Content, centred. In RTL the leading icon sits on the right.
   const Color fg = mix(lk.fg, lk.fg_hover, in.hover_t);
+  const bool mirrored = is_rtl();
+  const Icon first_icon = mirrored ? o.trailing_icon : lead;
+  const Icon last_icon = mirrored ? lead : o.trailing_icon;
   float x = std::floor(box.GetCenter().x - content / 2);
   const float cy = box.GetCenter().y;
-  if (lead != Icon::none) {
-    draw_icon(dl, lead, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
+  if (first_icon != Icon::none) {
+    draw_icon(dl, first_icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
     x += icon_px + gap;
   }
   if (!text.empty()) {
@@ -104,7 +107,7 @@ bool Button(const char *label, const ButtonOptions &o) {
     }
     x += text_size.x + gap;
   }
-  if (o.trailing_icon != Icon::none) draw_icon(dl, o.trailing_icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
+  if (last_icon != Icon::none) draw_icon(dl, last_icon, ImVec2(x, std::floor(cy - icon_px / 2)), icon_px, fg);
 
   if (o.variant == Variant::link && in.hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   return in.pressed;

@@ -59,9 +59,10 @@ bool needs_shaping(const char *begin, const char *end) {
 #ifndef SILTA_SHAPING
 
 bool shaping_available() { return false; }
-float shaped_width(const char *, const char *, int, float) { return 0; }
-const char *shaped_wrap(const char *, const char *end, int, float, float) { return end; }
-void draw_shaped(ImDrawList *, ImVec2, const char *, const char *, int, float, ImU32) {}
+float shaped_width(const char *, const char *, int, float, bool) { return 0; }
+const char *shaped_wrap(const char *, const char *end, int, float, float, bool) { return end; }
+void draw_shaped(ImDrawList *, ImVec2, const char *, const char *, int, float, ImU32, bool) {}
+bool shaped_line_info(const char *, const char *, int, float, bool, ShapedLineInfo &) { return false; }
 
 #else
 
@@ -87,10 +88,14 @@ struct Glyph {
   int face;
   uint32_t id;
   float x, y; // pen offset (pixels) and baseline offset (up is negative)
+  float pen, advance; // visual span of the glyph, for caret and selection mapping
+  uint32_t cluster;   // codepoint index in the line, from HarfBuzz
+  uint32_t level;     // bidi level of the run
 };
 
 struct Line {
   std::vector<Glyph> glyphs;
+  std::vector<size_t> cp_byte; // byte offset of each codepoint, then the end
   float width = 0;
 };
 
@@ -164,8 +169,9 @@ struct ShaperState {
 
   // ------------------------------------------------------------- shaping
   // Shapes one line: bidi runs in visual order, each split by font and shaped.
-  const Line &shape(const char *begin, const char *end, int weight, float size) {
+  const Line &shape(const char *begin, const char *end, int weight, float size, bool rtl_base) {
     std::string key(1, char('0' + weight));
+    key.push_back(rtl_base ? 'R' : 'L');
     key.append(reinterpret_cast<const char *>(&size), sizeof size);
     key.append(begin, end);
     if (auto it = lines.find(key); it != lines.end()) return it->second;
@@ -174,18 +180,23 @@ struct ShaperState {
     if (!buffer || faces.empty()) return line;
 
     codepoints.clear();
+    line.cp_byte.clear();
+    line.cp_byte.push_back(0);
     for (const char *s = begin; s < end;) {
       unsigned int c = 0;
       const int n = ImTextCharFromUtf8(&c, s, end);
       if (n <= 0) break;
       s += n;
       codepoints.push_back(c);
+      line.cp_byte.push_back(std::size_t(s - begin));
     }
     if (codepoints.empty()) return line;
 
     SBCodepointSequence sequence = {SBStringEncodingUTF32, codepoints.data(), codepoints.size()};
     SBAlgorithmRef algorithm = SBAlgorithmCreate(&sequence);
-    SBParagraphRef paragraph = SBAlgorithmCreateParagraph(algorithm, 0, codepoints.size(), SBLevelDefaultLTR);
+    // An explicit 0/1 base level forces the field's direction; the
+    // SBLevelDefault* sentinels let the first strong character decide.
+    SBParagraphRef paragraph = SBAlgorithmCreateParagraph(algorithm, 0, codepoints.size(), rtl_base ? 1 : 0);
     SBLineRef bidi_line = SBParagraphCreateLine(paragraph, 0, SBParagraphGetLength(paragraph));
     const SBUInteger run_count = SBLineGetRunCount(bidi_line);
     const SBRun *runs = SBLineGetRunsPtr(bidi_line);
@@ -227,8 +238,11 @@ struct ShaperState {
         const hb_glyph_info_t *info = hb_buffer_get_glyph_infos(buffer, &count);
         const hb_glyph_position_t *pos = hb_buffer_get_glyph_positions(buffer, &count);
         for (unsigned g = 0; g < count; ++g) {
-          line.glyphs.push_back({seg.face, info[g].codepoint, pen + pos[g].x_offset / 64.f, -pos[g].y_offset / 64.f});
-          pen += pos[g].x_advance / 64.f;
+          const float advance = pos[g].x_advance / 64.f;
+          const uint32_t cluster = std::min<uint32_t>(info[g].cluster, uint32_t(codepoints.size() - 1));
+          line.glyphs.push_back({seg.face, info[g].codepoint, pen + pos[g].x_offset / 64.f,
+                                 -pos[g].y_offset / 64.f, pen, advance, cluster, runs[r].level});
+          pen += advance;
         }
       }
     }
@@ -326,16 +340,17 @@ ShaperState &S() {
 
 bool shaping_available() { return true; }
 
-float shaped_width(const char *begin, const char *end, int weight, float size) {
-  return S().shape(begin, end, weight, size).width;
+float shaped_width(const char *begin, const char *end, int weight, float size, bool rtl_base) {
+  return S().shape(begin, end, weight, size, rtl_base).width;
 }
 
-const char *shaped_wrap(const char *begin, const char *end, int weight, float size, float wrap_width) {
+const char *shaped_wrap(const char *begin, const char *end, int weight, float size, float wrap_width,
+                        bool rtl_base) {
   ShaperState &st = S();
   auto fits = [&](const char *e) {
     const char *t = e;
     while (t > begin && t[-1] == ' ') --t; // trailing spaces do not count
-    return st.shape(begin, t, weight, size).width <= wrap_width;
+    return st.shape(begin, t, weight, size, rtl_base).width <= wrap_width;
   };
   if (fits(end)) return end;
   // The last space-separated break that fits.
@@ -371,9 +386,9 @@ const char *shaped_wrap(const char *begin, const char *end, int weight, float si
 }
 
 void draw_shaped(ImDrawList *list, ImVec2 top_left, const char *begin, const char *end, int weight, float size,
-                 ImU32 color) {
+                 ImU32 color, bool rtl_base) {
   ShaperState &st = S();
-  const Line &line = st.shape(begin, end, weight, size);
+  const Line &line = st.shape(begin, end, weight, size, rtl_base);
   if (line.glyphs.empty()) return;
   // Rasterize first, so the atlas is complete before it is uploaded.
   struct Quad {
@@ -404,6 +419,72 @@ void draw_shaped(ImDrawList *list, ImVec2 top_left, const char *begin, const cha
                      ImVec2(float(s.x + s.w) * iw, float(s.y + s.h) * ih), s.color ? colour_tint : color);
   }
   list->PopTexture();
+}
+
+bool shaped_line_info(const char *begin, const char *end, int weight, float size, bool rtl_base,
+                      ShapedLineInfo &out) {
+  out = {};
+  ShaperState &st = S();
+  const Line &line = st.shape(begin, end, weight, size, rtl_base);
+  out.width = line.width;
+  if (begin == end) {
+    out.carets.push_back({0, rtl_base ? 0.f : 0.f, rtl_base ? 1 : 0});
+    return true;
+  }
+  if (line.glyphs.empty() || line.cp_byte.empty()) return true;
+
+  // Distinct HarfBuzz clusters in logical order; a cluster ends where the next
+  // one starts (ligatures and combining marks cover several codepoints).
+  std::vector<uint32_t> clusters;
+  clusters.reserve(line.glyphs.size());
+  for (const Glyph &g : line.glyphs) clusters.push_back(g.cluster);
+  std::sort(clusters.begin(), clusters.end());
+  clusters.erase(std::unique(clusters.begin(), clusters.end()), clusters.end());
+  auto cluster_end = [&](uint32_t c) {
+    const auto it = std::upper_bound(clusters.begin(), clusters.end(), c);
+    return it == clusters.end() ? uint32_t(line.cp_byte.size() - 1) : *it;
+  };
+
+  std::unordered_map<uint32_t, ShapedCluster> by_cluster;
+  for (const Glyph &g : line.glyphs) {
+    const auto it = by_cluster.find(g.cluster);
+    if (it == by_cluster.end()) {
+      ShapedCluster c;
+      c.begin = line.cp_byte[g.cluster];
+      c.end = line.cp_byte[cluster_end(g.cluster)];
+      c.x0 = g.pen;
+      c.x1 = g.pen + g.advance;
+      c.level = int(g.level);
+      by_cluster.emplace(g.cluster, c);
+    } else {
+      it->second.x0 = std::min(it->second.x0, g.pen);
+      it->second.x1 = std::max(it->second.x1, g.pen + g.advance);
+    }
+  }
+  for (const auto &entry : by_cluster) out.clusters.push_back(entry.second);
+  std::sort(out.clusters.begin(), out.clusters.end(),
+            [](const ShapedCluster &a, const ShapedCluster &b) { return a.x0 < b.x0; });
+
+  // Caret stops at both edges of every cluster, on the side its run reads from.
+  auto add_caret = [&](size_t offset, float x, int level) {
+    for (const ShapedCaret &c : out.carets)
+      if (c.offset == offset && std::fabs(c.x - x) < 0.01f) return;
+    out.carets.push_back({offset, x, level});
+  };
+  for (const ShapedCluster &c : out.clusters) {
+    const bool rtl = (c.level & 1) != 0;
+    add_caret(c.begin, rtl ? c.x1 : c.x0, c.level);
+    add_caret(c.end, rtl ? c.x0 : c.x1, c.level);
+  }
+  // The clusters already describe the paragraph edges. Only fall back to a
+  // synthetic stop when nothing was shaped (missing font, unusual controls).
+  if (out.carets.empty()) {
+    add_caret(0, 0.f, rtl_base ? 1 : 0);
+    add_caret(line.cp_byte.back(), out.width, rtl_base ? 1 : 0);
+  }
+  std::sort(out.carets.begin(), out.carets.end(),
+            [](const ShapedCaret &a, const ShapedCaret &b) { return a.offset < b.offset; });
+  return true;
 }
 
 #endif

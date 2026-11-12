@@ -73,13 +73,15 @@ void Toaster() {
     const float alpha = in * (1 - out);
     next_change = std::min(next_change, leaving ? 0.0 : e.duration - age);
 
-    const float text_x = pad + (icon_for(e.kind) != Icon::none ? icon + px(10) : 0);
-    const float wrap = width - text_x - pad;
+    const bool mirrored = is_rtl();
+    const float icon_area = icon_for(e.kind) != Icon::none ? icon + px(10) : 0;
+    const float text_x = mirrored ? pad : pad + icon_area;
+    const float wrap = width - text_x - pad - (mirrored ? icon_area : 0);
     const ImVec2 title = measure_text(e.title.c_str(), TextSize::sm, Weight::medium, wrap);
     const ImVec2 desc = e.description.empty() ? ImVec2(0, 0) : measure_text(e.description.c_str(), TextSize::sm, Weight::regular, wrap);
     const float h = pad * 2 + title.y + (desc.y > 0 ? px(2) + desc.y : 0);
     const float slide = (1 - in) * px(16);
-    const float x = vp->Pos.x + vp->Size.x - margin - width;
+    const float x = mirrored ? vp->Pos.x + margin : vp->Pos.x + vp->Size.x - margin - width;
     const ImRect box(ImVec2(x, bottom - h + slide), ImVec2(x + width, bottom + slide));
 
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
@@ -88,12 +90,14 @@ void Toaster() {
     draw::fill(dl, box, t.popover, radius);
     draw::border(dl, box, t.border, radius, px(1));
     if (icon_for(e.kind) != Icon::none)
-      draw_icon(dl, icon_for(e.kind), ImVec2(box.Min.x + pad, box.Min.y + pad + px(2)), icon, color_for(e.kind, t));
+      draw_icon(dl, icon_for(e.kind),
+                ImVec2(mirrored ? box.Max.x - pad - icon : box.Min.x + pad, box.Min.y + pad + px(2)), icon,
+                color_for(e.kind, t));
     draw_text(dl, ImVec2(box.Min.x + text_x, box.Min.y + pad), e.title.c_str(), TextSize::sm, Weight::medium,
-              t.popover_foreground, wrap);
+              t.popover_foreground, wrap, 0, TextAlign::start);
     if (desc.y > 0)
       draw_text(dl, ImVec2(box.Min.x + text_x, box.Min.y + pad + title.y + px(2)), e.description.c_str(),
-                TextSize::sm, Weight::regular, t.muted_foreground, wrap);
+                TextSize::sm, Weight::regular, t.muted_foreground, wrap, 0, TextAlign::start);
     ImGui::PopStyleVar();
     bottom -= (h + gap) * alpha + 0.f;
   }

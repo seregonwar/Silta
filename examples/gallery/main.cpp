@@ -4,6 +4,7 @@
 #include "silta/silta.hpp"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -33,6 +34,11 @@ struct State {
   float progress = 0.25f;
   std::string profile_name = "Pedro Duarte", profile_user = "@peduarte";
   std::string message;
+  bool rtl = false; // --rtl, and the RTL switch in the header
+  std::string rtl_name = "سارة عبد الله";
+  std::string rtl_mixed = "Silta 0.3 يدعم العربية and English";
+  std::string rtl_message = "مرحبا بالعالم\nهذا نص متعدد الأسطر";
+  bool rtl_notifications = true, rtl_active = false;
   float scroll = 0; // --scroll=N (points), for screenshots
   Backend switch_to = Backend::automatic; // --switch-to=..., tests runtime switching
   bool hidden = false;                     // --hidden
@@ -42,6 +48,40 @@ struct State {
   int wait = 0;
   double sleep_until = 0;
 };
+
+std::string decode_codepoints(const std::string &arg) {
+  std::string text;
+  for (size_t pos = 0; pos < arg.size();) {
+    const size_t comma = arg.find(',', pos);
+    const std::string token = arg.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+    const unsigned long cp = std::strtoul(token.c_str(), nullptr, 16);
+    if (cp < 0x80) {
+      text += char(cp);
+    } else if (cp < 0x800) {
+      text += char(0xC0 | (cp >> 6));
+      text += char(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+      text += char(0xE0 | (cp >> 12));
+      text += char(0x80 | ((cp >> 6) & 0x3F));
+      text += char(0x80 | (cp & 0x3F));
+    } else if (cp <= 0x10FFFF) {
+      text += char(0xF0 | (cp >> 18));
+      text += char(0x80 | ((cp >> 12) & 0x3F));
+      text += char(0x80 | ((cp >> 6) & 0x3F));
+      text += char(0x80 | (cp & 0x3F));
+    }
+    pos = comma == std::string::npos ? arg.size() : comma + 1;
+  }
+  return text;
+}
+
+// Scripted assertions read the same std::strings the gallery passes to the
+// shaped fields; hex makes RTL/mixed values unambiguous in terminal logs.
+void print_state_text(const char *name, const std::string &text) {
+  std::fprintf(stderr, "[state] %s len=%zu hex=", name, text.size());
+  for (unsigned char c : text) std::fprintf(stderr, "%02X", unsigned(c));
+  std::fprintf(stderr, "\n");
+}
 
 // Plays the test script by feeding ImGui the same events a user would make.
 // Coordinates are in points from the window's top-left corner.
@@ -70,11 +110,42 @@ void run_script(State &s, App &app) {
     io.AddMouseButtonEvent(0, false);
   } else if (verb == "type") {
     io.AddInputCharactersUTF8(arg.c_str());
+  } else if (verb == "typecp") { // Unicode codepoints, comma separated hex; avoids shell encoding
+    io.AddInputCharactersUTF8(decode_codepoints(arg).c_str());
+  } else if (verb == "ime") { // in-progress preedit, Unicode codepoints
+    const std::string text = decode_codepoints(arg);
+    if (!ime_composition(text.c_str())) std::fprintf(stderr, "[ime] no focused shaped field\n");
+  } else if (verb == "imecommit") {
+    if (!ime_commit()) std::fprintf(stderr, "[ime] commit without a composition\n");
+  } else if (verb == "imecancel") {
+    if (!ime_cancel()) std::fprintf(stderr, "[ime] cancel without a composition\n");
+  } else if (verb == "state") {
+    print_state_text("email", s.email);
+    print_state_text("password", s.password);
+    print_state_text("message", s.message);
+    print_state_text("rtl_name", s.rtl_name);
+    print_state_text("rtl_mixed", s.rtl_mixed);
+    print_state_text("rtl_message", s.rtl_message);
+    std::fflush(stderr);
   } else if (verb == "key") {
     const ImGuiKey key = arg == "tab" ? ImGuiKey_Tab : arg == "escape" ? ImGuiKey_Escape
-                       : arg == "enter" ? ImGuiKey_Enter : arg == "space" ? ImGuiKey_Space : ImGuiKey_None;
+                       : arg == "enter" ? ImGuiKey_Enter : arg == "space" ? ImGuiKey_Space
+                       : arg == "left" ? ImGuiKey_LeftArrow : arg == "right" ? ImGuiKey_RightArrow
+                       : arg == "home" ? ImGuiKey_Home : arg == "end" ? ImGuiKey_End
+                       : arg == "backspace" ? ImGuiKey_Backspace : arg == "delete" ? ImGuiKey_Delete
+                       : (arg.size() == 1 && arg[0] >= 'a' && arg[0] <= 'z')
+                             ? ImGuiKey(ImGuiKey_A + int(arg[0] - 'a'))
+                             : ImGuiKey_None;
     io.AddKeyEvent(key, true);
     io.AddKeyEvent(key, false);
+  } else if (verb == "shiftdown") {
+    io.AddKeyEvent(ImGuiMod_Shift, true);
+  } else if (verb == "shiftup") {
+    io.AddKeyEvent(ImGuiMod_Shift, false);
+  } else if (verb == "ctrldown") {
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
+  } else if (verb == "ctrlup") {
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
   } else if (verb == "wait") {
     s.wait = std::stoi(arg);
   } else if (verb == "sleep") { // real time, so animations can finish
@@ -118,6 +189,7 @@ void header(State &s, App &app) {
         app.set_backend(b);
     }
     Separator({.vertical = true});
+    if (Switch("RTL", &s.rtl)) set_direction(s.rtl ? Direction::rtl : Direction::ltr);
     if (Switch("Dark", &s.dark)) apply_theme(s);
   }
 }
@@ -380,7 +452,7 @@ void controls(State &s) {
 }
 
 void languages() {
-  auto section = Section("Languages", "System fallback fonts and HarfBuzz shaping cover every script, in both directions.");
+  auto section = Section("Languages", "System fallback fonts and HarfBuzz shaping cover every script, in both directions. The RTL switch in the header mirrors the layout.");
   struct Sample {
     const char *name, *text;
   };
@@ -402,6 +474,46 @@ void languages() {
     auto row = Row({.gap = 16, .align = Align::center});
     { auto name = Column({.width = 96}); Text(sample.name, {.weight = Weight::medium}); }
     Text(sample.text, {.size = TextSize::lg});
+  }
+}
+
+void right_to_left(State &s) {
+  auto section = Section("Right-to-left layout",
+                         "Rows, component content and shaped text fields follow the layout direction. The caret and selection move visually, not in byte order.");
+  if (auto card = Card({.width = 400})) {
+    {
+      auto header = CardHeader();
+      CardTitle("إعدادات الحساب");
+      CardDescription("نموذج يتبع اتجاه التخطيط، مع نص عربي مشكّل.");
+    }
+    {
+      auto content = CardContent({.gap = 16});
+      {
+        auto field = Column({.gap = 6});
+        Label("الاسم");
+        Input("rtl-name", &s.rtl_name);
+      }
+      {
+        auto field = Column({.gap = 6});
+        Label("اسم مختلط");
+        Input("rtl-mixed", &s.rtl_mixed, {.placeholder = "الاسم أو البريد الإلكتروني"});
+      }
+      {
+        auto field = Column({.gap = 6});
+        Label("رسالة");
+        Textarea("rtl-message", &s.rtl_message, {.placeholder = "اكتب رسالتك هنا...", .min_height = 96});
+      }
+      {
+        auto row = Row({.gap = 16, .align = Align::center});
+        Checkbox("تلقي الإشعارات", &s.rtl_notifications);
+        Switch("مفعّل", &s.rtl_active);
+      }
+      {
+        auto row = Row({.gap = 12, .align = Align::center, .justify = Justify::end, .width = fill});
+        Button("إلغاء", {.variant = Variant::outline});
+        Button("حفظ التغييرات");
+      }
+    }
   }
 }
 
@@ -450,7 +562,7 @@ void panels() {
   }
 }
 
-// --backend=vulkan|d3d11  --dark  --base=zinc|slate|stone|gray  --scroll=N
+// --backend=vulkan|d3d11  --dark  --rtl  --base=zinc|slate|stone|gray  --scroll=N
 // --switch-to=vulkan|d3d11 (swaps the renderer at frame 3)  --hidden  --script=...
 Backend parse_args(int argc, char **argv, State &s) {
   Backend backend = Backend::automatic;
@@ -459,6 +571,7 @@ Backend parse_args(int argc, char **argv, State &s) {
     if (a == "--backend=vulkan") backend = Backend::vulkan;
     else if (a == "--backend=d3d11") backend = Backend::d3d11;
     else if (a == "--dark") s.dark = true;
+    else if (a == "--rtl") s.rtl = true;
     else if (a == "--base=zinc") s.base = BaseColor::zinc;
     else if (a == "--base=slate") s.base = BaseColor::slate;
     else if (a == "--base=stone") s.base = BaseColor::stone;
@@ -483,10 +596,20 @@ int main(int argc, char **argv) {
   const Backend backend = parse_args(argc, argv, s);
   App app({.title = "Silta Gallery", .width = 1180, .height = 900, .backend = backend, .hidden = s.hidden});
   if (!app.ok()) return 1;
+  if (s.hidden) {
+    // Headless runs get an in-memory clipboard, so scripted Ctrl+A/C/X/V work
+    // without the OS clipboard and pasted text is deterministic.
+    static std::string clipboard;
+    ImGuiPlatformIO &platform = ImGui::GetPlatformIO();
+    platform.Platform_GetClipboardTextFn = [](ImGuiContext *) -> const char * { return clipboard.c_str(); };
+    platform.Platform_SetClipboardTextFn = [](ImGuiContext *, const char *text) { clipboard = text ? text : ""; };
+    platform.Platform_ClipboardUserData = nullptr;
+  }
   apply_theme(s);
 
   return app.run([&] {
     ++s.frames;
+    if ((direction() == Direction::rtl) != s.rtl) set_direction(s.rtl ? Direction::rtl : Direction::ltr);
     if (s.scroll > 0 && s.frames < 4) ImGui::SetScrollY(s.scroll * scale());
     if (s.switch_to != Backend::automatic && s.frames == 3) app.set_backend(s.switch_to);
     if (s.step < s.script.size()) request_frames(2); // keep the loop awake while scripted
@@ -509,6 +632,7 @@ int main(int argc, char **argv) {
     controls(s);
     panels();
     languages();
+    right_to_left(s);
     icons();
     Separator();
     char status[128];

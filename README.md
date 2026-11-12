@@ -19,6 +19,14 @@ existing render loop.
   stone and gray palettes. OKLCH colors, semantic tokens and configurable accents.
 - **Flexible layout.** Rows and columns with spacing, padding, alignment,
   justification, flexible sizing and responsive breakpoints.
+- **Right-to-left layout.** `set_direction(Direction::rtl)` mirrors rows,
+  component content, sliders and text alignment for Arabic, Hebrew and other
+  RTL languages.
+- **Shaped editing.** `Input` and `Textarea` edit Arabic, Hebrew and mixed
+  right-to-left text with joined glyphs, right-anchored layout, and a caret,
+  selection and delete that follow visual order; copy, cut and paste
+  (`Ctrl+A/C/X/V`) act on the same visual selection. Plain left-to-right
+  fields keep Dear ImGui's editor.
 - **Consistent presentation.** Inter typography, rounded borders, shadows,
   focus rings and animated state transitions.
 - **Native application shell.** GLFW windows, Direct3D 11 and Vulkan backends,
@@ -202,12 +210,17 @@ To run the editor checks locally after building the test executables:
 ./examples/editor/smoke.ps1 -BuildDirectory build/win
 ```
 
-The Gallery also accepts `--hidden`, `--dark`, `--base=zinc`,
+The Gallery also accepts `--hidden`, `--dark`, `--rtl`, `--base=zinc`,
 `--backend=d3d11|vulkan`, `--switch-to=vulkan|d3d11`, and an input script:
 
 ```powershell
 ./build/win/examples/gallery/Release/silta_gallery.exe --hidden --script="sleep:300;shot:gallery.png;quit"
 ```
+
+Besides `click`, `type`, `typecp` (hex codepoints), `key`, `move`, `wait`,
+`sleep`, `scroll`, `shot` and `quit`, the player accepts `shiftdown`/`shiftup`
+and `ctrldown`/`ctrlup` modifiers. Hidden runs install an in-memory clipboard,
+so `Ctrl+A/C/X/V` can be exercised without touching the OS clipboard.
 
 Set `SILTA_TRACE` to a file path to record render-loop diagnostics.
 

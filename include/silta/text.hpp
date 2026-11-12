@@ -10,6 +10,10 @@ namespace silta {
 enum class TextSize { xs, sm, base, lg, xl, xl2, xl3, xl4 };
 enum class Weight { regular, medium, semibold };
 
+// Horizontal alignment of text inside its box. start and end follow the layout
+// direction (start is the right in RTL); left, center and right are physical.
+enum class TextAlign { start, center, end, left, right };
+
 // CSS font-size and line-height in points (text-sm = 14 / 20).
 float font_points(TextSize size);
 float line_points(TextSize size);
@@ -28,7 +32,7 @@ ImVec2 measure_text(const char *text, TextSize size, Weight weight = Weight::reg
 // Draws text with each line's glyphs vertically centred in its line box, as
 // CSS does. Returns the box size.
 ImVec2 draw_text(ImDrawList *list, ImVec2 top_left, const char *text, TextSize size, Weight weight, Color color,
-                 float wrap_width = 0, float line_height = 0);
+                 float wrap_width = 0, float line_height = 0, TextAlign align = TextAlign::left);
 
 struct TextOptions {
   TextSize size = TextSize::sm;
@@ -37,6 +41,7 @@ struct TextOptions {
   bool wrap = false;          // wrap to the available width
   bool muted = false;         // shorthand for color = muted_foreground
   float line_height = 0;      // points; 0 = the size's own line height
+  TextAlign align = TextAlign::start;
 };
 
 // A paragraph or label placed by the current layout.

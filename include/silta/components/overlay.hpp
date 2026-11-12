@@ -72,7 +72,7 @@ private:
 
 struct MenuItemOptions {
   Icon icon = Icon::none;
-  const char *shortcut = nullptr; // e.g. "Ctrl+S", drawn muted on the right
+  const char *shortcut = nullptr; // e.g. "Ctrl+S", drawn muted on the far side
   bool disabled = false;
   bool destructive = false;
   const bool *checked = nullptr;  // shows a check column when set
@@ -133,7 +133,7 @@ private:
   State *state_ = nullptr;
 };
 
-// Buttons at the end of a dialog, right-aligned (sm:justify-end gap-2).
+// Buttons at the end of a dialog (right in LTR, left in RTL; sm:justify-end gap-2).
 [[nodiscard]] inline Flex DialogFooter() {
   return Flex({.axis = Axis::row, .gap = 8, .align = Align::center, .justify = Justify::end, .width = fill});
 }

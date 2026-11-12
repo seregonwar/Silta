@@ -15,8 +15,10 @@ bool Switch(const char *label, bool *value, const SwitchOptions &o) {
   const float h = std::max(track_h, line);
   const float w = track_w + (text.empty() ? 0 : gap + ts.x);
   const ImRect box = layout::allocate(ImVec2(w, h));
-  const ImRect track(ImVec2(box.Min.x, std::floor(box.GetCenter().y - track_h / 2)),
-                     ImVec2(box.Min.x + track_w, std::floor(box.GetCenter().y - track_h / 2) + track_h));
+  const bool mirrored = is_rtl();
+  const float track_x = mirrored ? box.Max.x - track_w : box.Min.x;
+  const ImRect track(ImVec2(track_x, std::floor(box.GetCenter().y - track_h / 2)),
+                     ImVec2(track_x + track_w, std::floor(box.GetCenter().y - track_h / 2) + track_h));
 
   detail::DisabledScope disabled(o.disabled);
   const detail::Interaction in = detail::interact(id, box, o.disabled);
@@ -40,12 +42,14 @@ bool Switch(const char *label, bool *value, const SwitchOptions &o) {
   // Thumb: inset by the 1px border, travels track width - thumb - 2px.
   const Color thumb_col = t.is_dark() ? mix(t.foreground, t.primary_foreground, on) : t.background;
   const float travel = track_w - thumb - px(2);
-  const ImVec2 c(track.Min.x + px(1) + thumb / 2 + travel * on, track.GetCenter().y);
+  const ImVec2 c(mirrored ? track.Max.x - px(1) - thumb / 2 - travel * on
+                          : track.Min.x + px(1) + thumb / 2 + travel * on,
+                 track.GetCenter().y);
   dl->AddCircleFilled(c, thumb / 2, thumb_col.u32(), 32);
 
   if (!text.empty())
-    draw_text(dl, ImVec2(track.Max.x + gap, std::floor(box.GetCenter().y - ts.y / 2)), text.c_str(), TextSize::sm,
-              Weight::medium, t.foreground, 0, font_points(TextSize::sm));
+    draw_text(dl, ImVec2(mirrored ? box.Min.x : track.Max.x + gap, std::floor(box.GetCenter().y - ts.y / 2)),
+              text.c_str(), TextSize::sm, Weight::medium, t.foreground, 0, font_points(TextSize::sm));
   return in.pressed;
 }
 

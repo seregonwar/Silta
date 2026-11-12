@@ -65,7 +65,33 @@ ImGui::DestroyContext();              // also frees Silta's state
 Silta components can live in any ImGui window, popup or child; they lay
 themselves out from the window's cursor. Call `silta::set_scale()` when the
 window moves to a monitor with another DPI, and `silta::set_theme()` to switch
-themes.
+themes. For right-to-left languages pass `.direction = silta::Direction::rtl`
+to `silta::init` or call `silta::set_direction()` at any time: rows and
+components mirror, and text aligned with the layout starts at the right.
+
+### Text fields and right-to-left editing
+
+With `SILTA_SHAPING` on (the default), `Input` and `Textarea` in an RTL layout
+draw and edit through Silta's shaper: Arabic and Hebrew join, lines start at
+the right edge, and the caret, selection, arrow keys, Home/End, Backspace and
+Delete work in visual order, including mixed runs such as Arabic with Latin
+words or numbers. The value stays a normal UTF-8 `std::string`; byte offsets
+are the storage model. A field in an LTR layout whose text needs no shaping
+still uses ImGui's editor, so the common case keeps ImGui's behaviour and
+performance. Password fields always use ImGui's editor.
+
+Clipboard shortcuts (`Ctrl+A/C/X/V`) work on the visual selection: they copy
+and cut in logical order, paste over the selected range, and leave the caret
+after the inserted text. The shaped editor uses ImGui's clipboard functions,
+so a headless host must provide
+`ImGuiPlatformIO::Platform_GetClipboardTextFn` and `Platform_SetClipboardTextFn`
+(the gallery's hidden runs install an in-memory pair for scripted tests).
+Pasted CRLF is normalized to LF in a `Textarea`, and single-line fields drop
+line breaks and turn tabs into spaces.
+
+Caveats: IME composition (Japanese, Chinese, Korean) is not yet supported by
+the shaped editor; an RTL field receives only the committed characters. Builds
+with `SILTA_SHAPING=OFF` fall back to ImGui's editor for every field.
 
 ## What Silta changes, and what it does not
 

@@ -14,7 +14,10 @@
 namespace silta {
 
 enum class Axis { row, column };
+// Cross-axis alignment. start and end follow the layout direction (in an RTL
+// column, start is the right edge); stretch fills the cross axis.
 enum class Align { start, center, end, stretch };
+// Main-axis distribution. start and end follow the layout direction.
 enum class Justify { start, center, end, between };
 
 struct Edges {
@@ -53,6 +56,9 @@ float fill_height();
 // Resolves a points width (0 fit, fill, or fixed) given the content width.
 float resolve_width(float points, float content_px);
 float resolve_height(float points, float content_px);
+// Width a block (a paragraph) should take: the container's content width when
+// it is a stretching column of known width, otherwise `content`.
+float block_width(float content);
 
 // Tailwind breakpoints on the viewport width (sm 640, md 768, lg 1024, xl 1280).
 enum class Breakpoint { sm, md, lg, xl };

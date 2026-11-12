@@ -30,6 +30,13 @@ ImRect viewport_rect() {
   return {vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y)};
 }
 
+// Horizontal alignment follows the layout direction: start is the right edge
+// in RTL.
+Align mirror_align(Align align) {
+  if (!is_rtl()) return align;
+  return align == Align::start ? Align::end : align == Align::end ? Align::start : align;
+}
+
 // Top-left corner for a box of `size` placed on `side` of `anchor`, flipped to
 // the opposite side when it does not fit and kept inside the viewport.
 ImVec2 place(const ImRect &anchor, ImVec2 size, Side side, Align align, float offset, Side *used = nullptr) {
@@ -54,9 +61,10 @@ ImVec2 place(const ImRect &anchor, ImVec2 size, Side side, Align align, float of
   const bool vertical = side == Side::top || side == Side::bottom;
   if (vertical) {
     p.y = side == Side::bottom ? anchor.Max.y + offset : anchor.Min.y - offset - size.y;
-    p.x = align == Align::end      ? anchor.Max.x - size.x
-          : align == Align::center ? anchor.GetCenter().x - size.x / 2
-                                   : anchor.Min.x;
+    const Align ha = mirror_align(align);
+    p.x = ha == Align::end      ? anchor.Max.x - size.x
+          : ha == Align::center ? anchor.GetCenter().x - size.x / 2
+                                : anchor.Min.x;
   } else {
     p.x = side == Side::right ? anchor.Max.x + offset : anchor.Min.x - offset - size.x;
     p.y = align == Align::end      ? anchor.Max.y - size.y
@@ -229,20 +237,41 @@ bool menu_row(const char *label, const MenuItemOptions &o, bool close_on_press) 
   if (focused) draw::fill(dl, box, o.destructive ? t.destructive.fade(0.1f) : t.accent, px(t.radius_sm()));
   const Color ink = o.destructive ? t.destructive : focused ? t.accent_foreground : t.popover_foreground;
   const float cy = box.GetCenter().y;
-  float x = box.Min.x + pad;
-  if (o.checked) {
-    if (*o.checked) draw_icon(dl, Icon::check, ImVec2(x, std::floor(cy - icon / 2)), icon, ink);
-    x += icon + gap;
-  }
-  if (o.icon != Icon::none) {
-    draw_icon(dl, o.icon, ImVec2(x, std::floor(cy - icon / 2)), icon, o.destructive ? t.destructive : t.muted_foreground);
-    x += icon + gap;
-  }
-  draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text.c_str(), TextSize::sm, Weight::regular, ink);
-  if (o.shortcut) {
-    const ImVec2 ss = measure_text(o.shortcut, TextSize::xs);
-    draw_text(dl, ImVec2(box.Max.x - pad - ss.x, std::floor(cy - ss.y / 2)), o.shortcut, TextSize::xs,
-              Weight::regular, t.muted_foreground);
+  if (is_rtl()) {
+    // Icons and the check column sit at the right, shortcuts at the left.
+    float x = box.Max.x - pad;
+    if (o.checked) {
+      if (*o.checked) draw_icon(dl, Icon::check, ImVec2(x - icon, std::floor(cy - icon / 2)), icon, ink);
+      x -= icon + gap;
+    }
+    if (o.icon != Icon::none) {
+      draw_icon(dl, o.icon, ImVec2(x - icon, std::floor(cy - icon / 2)), icon,
+                o.destructive ? t.destructive : t.muted_foreground);
+      x -= icon + gap;
+    }
+    draw_text(dl, ImVec2(x - ts.x, std::floor(cy - ts.y / 2)), text.c_str(), TextSize::sm, Weight::regular, ink);
+    if (o.shortcut) {
+      const ImVec2 ss = measure_text(o.shortcut, TextSize::xs);
+      draw_text(dl, ImVec2(box.Min.x + pad, std::floor(cy - ss.y / 2)), o.shortcut, TextSize::xs, Weight::regular,
+                t.muted_foreground);
+    }
+  } else {
+    float x = box.Min.x + pad;
+    if (o.checked) {
+      if (*o.checked) draw_icon(dl, Icon::check, ImVec2(x, std::floor(cy - icon / 2)), icon, ink);
+      x += icon + gap;
+    }
+    if (o.icon != Icon::none) {
+      draw_icon(dl, o.icon, ImVec2(x, std::floor(cy - icon / 2)), icon,
+                o.destructive ? t.destructive : t.muted_foreground);
+      x += icon + gap;
+    }
+    draw_text(dl, ImVec2(x, std::floor(cy - ts.y / 2)), text.c_str(), TextSize::sm, Weight::regular, ink);
+    if (o.shortcut) {
+      const ImVec2 ss = measure_text(o.shortcut, TextSize::xs);
+      draw_text(dl, ImVec2(box.Max.x - pad - ss.x, std::floor(cy - ss.y / 2)), o.shortcut, TextSize::xs,
+                Weight::regular, t.muted_foreground);
+    }
   }
   if (in.pressed && close_on_press) ClosePopover();
   return in.pressed;
@@ -262,8 +291,10 @@ bool MenuCheckbox(const char *label, bool *value) {
 void MenuLabel(const char *text) {
   const ImVec2 ts = measure_text(text, TextSize::sm, Weight::medium);
   const ImRect box = layout::allocate(ImVec2(std::max(ts.x + px(16), layout::fill_width()), px(32)));
-  draw_text(ImGui::GetWindowDrawList(), ImVec2(box.Min.x + px(8), std::floor(box.GetCenter().y - ts.y / 2)), text,
-            TextSize::sm, Weight::medium, theme().popover_foreground);
+  draw_text(ImGui::GetWindowDrawList(),
+            ImVec2(is_rtl() ? box.Max.x - px(8) - ts.x : box.Min.x + px(8),
+                   std::floor(box.GetCenter().y - ts.y / 2)),
+            text, TextSize::sm, Weight::medium, theme().popover_foreground);
 }
 
 void MenuSeparator() {
@@ -298,12 +329,21 @@ bool Select(const char *sid, int *selected, std::span<const char *const> items, 
     const bool has_value = *selected >= 0 && *selected < int(items.size());
     const char *shown = has_value ? items[size_t(*selected)] : (o.placeholder ? o.placeholder : "");
     const ImVec2 ts = measure_text(shown, TextSize::sm);
-    dl->PushClipRect(box.Min, ImVec2(box.Max.x - px(12) - icon - px(4), box.Max.y), true);
-    draw_text(dl, ImVec2(box.Min.x + px(12), std::floor(box.GetCenter().y - ts.y / 2)), shown, TextSize::sm,
-              Weight::regular, has_value ? t.foreground : t.muted_foreground);
-    dl->PopClipRect();
-    draw_icon(dl, Icon::chevron_down, ImVec2(box.Max.x - px(12) - icon, std::floor(box.GetCenter().y - icon / 2)),
-              icon, t.muted_foreground.fade(0.5f));
+    if (is_rtl()) {
+      draw_icon(dl, Icon::chevron_down, ImVec2(box.Min.x + px(12), std::floor(box.GetCenter().y - icon / 2)),
+                icon, t.muted_foreground.fade(0.5f));
+      dl->PushClipRect(ImVec2(box.Min.x + px(12) + icon + px(4), box.Min.y), box.Max, true);
+      draw_text(dl, ImVec2(box.Max.x - px(12) - ts.x, std::floor(box.GetCenter().y - ts.y / 2)), shown, TextSize::sm,
+                Weight::regular, has_value ? t.foreground : t.muted_foreground);
+      dl->PopClipRect();
+    } else {
+      dl->PushClipRect(box.Min, ImVec2(box.Max.x - px(12) - icon - px(4), box.Max.y), true);
+      draw_text(dl, ImVec2(box.Min.x + px(12), std::floor(box.GetCenter().y - ts.y / 2)), shown, TextSize::sm,
+                Weight::regular, has_value ? t.foreground : t.muted_foreground);
+      dl->PopClipRect();
+      draw_icon(dl, Icon::chevron_down, ImVec2(box.Max.x - px(12) - icon, std::floor(box.GetCenter().y - icon / 2)),
+                icon, t.muted_foreground.fade(0.5f));
+    }
     if (in.pressed) OpenPopover("##list");
   }
 
@@ -319,11 +359,14 @@ bool Select(const char *sid, int *selected, std::span<const char *const> items, 
       ImDrawList *dl = ImGui::GetWindowDrawList();
       if (focused) draw::fill(dl, row, t.accent, px(t.radius_sm()));
       const float cy = row.GetCenter().y;
-      draw_text(dl, ImVec2(row.Min.x + px(8), std::floor(cy - ts.y / 2)), items[size_t(i)], TextSize::sm,
-                Weight::regular, focused ? t.accent_foreground : t.popover_foreground);
+      const bool mirrored = is_rtl();
+      draw_text(dl, ImVec2(mirrored ? row.Max.x - px(8) - ts.x : row.Min.x + px(8), std::floor(cy - ts.y / 2)),
+                items[size_t(i)], TextSize::sm, Weight::regular,
+                focused ? t.accent_foreground : t.popover_foreground);
       if (i == *selected)
-        draw_icon(dl, Icon::check, ImVec2(row.Max.x - px(8) - icon, std::floor(cy - icon / 2)), icon,
-                  t.popover_foreground);
+        draw_icon(dl, Icon::check,
+                  ImVec2(mirrored ? row.Min.x + px(8) : row.Max.x - px(8) - icon, std::floor(cy - icon / 2)),
+                  icon, t.popover_foreground);
       if (in.pressed) {
         changed = *selected != i;
         *selected = i;
@@ -468,10 +511,11 @@ Dialog::Dialog(const char *sid, const DialogOptions &o) {
     const bool outside = ImGui::IsMouseClicked(0) && !box.Contains(ImGui::GetMousePos());
     if (escape || outside) ImGui::CloseCurrentPopup();
   }
-  // Close button: top-4 right-4, opacity-70 until hovered.
+  // Close button: top-4 right-4 (left-4 in RTL), opacity-70 until hovered.
   if (o.close_button) {
     const float icon = px(16);
-    const ImRect x(ImVec2(box.Max.x - px(16) - icon, box.Min.y + px(16)), ImVec2(box.Max.x - px(16), box.Min.y + px(16) + icon));
+    const float close_x = is_rtl() ? box.Min.x + px(16) : box.Max.x - px(16) - icon;
+    const ImRect x(ImVec2(close_x, box.Min.y + px(16)), ImVec2(close_x + icon, box.Min.y + px(16) + icon));
     const float slop = px(4);
     const ImRect hit(ImVec2(x.Min.x - slop, x.Min.y - slop), ImVec2(x.Max.x + slop, x.Max.y + slop));
     const detail::Interaction in = detail::interact(ImGui::GetID("##close"), hit, false);

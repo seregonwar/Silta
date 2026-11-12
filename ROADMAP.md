@@ -72,9 +72,13 @@ Products are sold in more than Latin-script markets.
       it keeps ImGui's atlas path.
 - [x] **Bidirectional text (M).** Right-to-left and mixed runs ordered with
       the Unicode bidi algorithm (SheenBidi).
-- [ ] **RTL layout (S).** Mirrored layout direction for rows and components.
-- [ ] **Shaped editing (M).** Input and Textarea still edit through ImGui,
-      which draws complex scripts unshaped.
+- [x] **RTL layout (S).** Mirrored layout direction for rows and components:
+      `set_direction(Direction::rtl)` mirrors rows, alignment, component
+      content, sliders, menus and text alignment.
+- [x] **Shaped editing (M).** Input and Textarea edit right-to-left and mixed
+      text through the shaper: joined glyphs, right-anchored lines, and a
+      caret, selection, delete and clipboard shortcuts that follow visual
+      order. Plain left-to-right fields keep ImGui's editor.
 - [x] **Font fallback (M).** Per-codepoint fallback chain: Inter, then
       system fonts found per platform (CJK ordered for the user's language,
       Indic, Thai, symbols), colour emoji; files memory-mapped.
