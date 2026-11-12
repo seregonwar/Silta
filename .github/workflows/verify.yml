@@ -74,7 +74,8 @@ jobs:
   windows:
     name: Windows applications and editor
     runs-on: windows-2022
-    timeout-minutes: 35    defaults:
+    timeout-minutes: 35
+    defaults:
       run:
         shell: pwsh
     steps:
